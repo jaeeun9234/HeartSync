@@ -8,10 +8,10 @@
             <InsightsFilterSettings>
               <option name="connection">
                 <ConnectionSetting>
-                  <option name="appId" value="PLACEHOLDER" />
-                  <option name="mobileSdkAppId" value="" />
-                  <option name="projectId" value="" />
-                  <option name="projectNumber" value="" />
+                  <option name="appId" value="com.example.heartsync" />
+                  <option name="mobileSdkAppId" value="1:1076939974673:android:5818de5b0847a55a7fe9b0" />
+                  <option name="projectId" value="heartsync-517ae" />
+                  <option name="projectNumber" value="1076939974673" />
                 </ConnectionSetting>
               </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />

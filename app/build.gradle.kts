@@ -2,16 +2,18 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    id("kotlin-parcelize")
+    id("com.google.gms.google-services")
 }
 
 android {
     namespace = "com.example.heartsync"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.example.heartsync"
         minSdk = 24
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
@@ -28,11 +30,11 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions {
-        jvmTarget = "11"
+        jvmTarget = "17"
     }
     buildFeatures {
         compose = true
@@ -56,4 +58,16 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+
+    // Firebase BoM (버전은 BoM이 관리)
+    implementation(platform("com.google.firebase:firebase-bom:33.1.2"))
+
+    // Firestore KTX
+    implementation("com.google.firebase:firebase-firestore-ktx")
+
+    // (선택) Auth 쓰면 uid 얻기용
+    implementation("com.google.firebase:firebase-auth-ktx")
+
+    // 코루틴이 없다면 추가
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 }
