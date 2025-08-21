@@ -1,7 +1,7 @@
 app/
  ├─ src/main/
  │   ├─ AndroidManifest.xml
- │   ├─ java/com/example/careband/
+ │   ├─ java/com/example/HeartSync/
  │   │   ├─ MainActivity.kt            // 앱 엔트리, 버튼으로 "측정 시작"
  │   │   ├─ service/
  │   │   │   ├─ MeasureService.kt      // 포그라운드 서비스 (BLE 연결+데이터 수신+CSV/Firestore)
