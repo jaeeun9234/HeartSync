@@ -1,0 +1,22 @@
+app/
+ ├─ src/main/
+ │   ├─ AndroidManifest.xml
+ │   ├─ java/com/example/HeartSync/
+ │   │   ├─ MainActivity.kt            // 앱 엔트리, 버튼으로 "측정 시작"
+ │   │   ├─ service/
+ │   │   │   ├─ MeasureService.kt      // 포그라운드 서비스 (BLE 연결+데이터 수신+CSV/Firestore)
+ │   │   │   └─ NotificationHelper.kt  // 서비스 알림 헬퍼
+ │   │   ├─ ble/
+ │   │   │   └─ PpgBleClient.kt        // BLE 스캔/연결/Notify 수신/명령 Write
+ │   │   ├─ data/
+ │   │   │   ├─ model/
+ │   │   │   │   └─ SessionConfig.kt   // SPOT 모드 설정값(duration 등)
+ │   │   │   ├─ local/
+ │   │   │   │   └─ CsvWriter.kt       // CSV 파일 기록 (MediaStore)
+ │   │   │   └─ remote/
+ │   │   │       └─ FirestoreUploader.kt // 수신 데이터 Firestore 업로드
+ │   │   └─ util/
+ │   │       └─ TimeExt.kt             // timestamp 포맷 헬퍼
+ │   └─ res/
+ │       ├─ values/strings.xml
+ │       └─ mipmap/ic_launcher.png
