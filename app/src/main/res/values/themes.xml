@@ -2,4 +2,13 @@
 <resources>
 
     <style name="Theme.HeartSync" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- 스플래시 전용 테마 -->
+    <style name="Theme.HeartSync.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#FFFFFF</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_logo_inset</item>
+        <item name="windowSplashScreenIconBackgroundColor">@android:color/transparent</item>
+        <item name="postSplashScreenTheme">@style/Theme.HeartSync</item>
+    </style>
+
 </resources>

@@ -14,18 +14,30 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.example.heartsync.data.model.MeasureMode
 import com.example.heartsync.data.model.SessionConfig
 import com.example.heartsync.service.MeasureService
 
 class MainActivity : ComponentActivity() {
+    private var keepSplash = true
 
     private val permissionLauncher = registerForActivityResult(RequestMultiplePermissions()) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // 1) 스플래시 설치 
+        val splash = installSplashScreen()
+        splash.setKeepOnScreenCondition {keepSplash}
+        
         super.onCreate(savedInstanceState)
         requestRuntimePerms()
 
+        // ex. 1.5초 동안 유지 후 false로 전환
+        window.decorView.postDelayed({
+            keepSplash = false
+        }, 1500)
+        
+        // 2) 메인 콘텐츠
         setContent {
             MaterialTheme {
                 Surface(Modifier.fillMaxSize()) {
