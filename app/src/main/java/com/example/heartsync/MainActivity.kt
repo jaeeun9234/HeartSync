@@ -1,5 +1,6 @@
 package com.example.heartsync
 
+import com.example.heartsync.ui.screens.LoginScreen
 import android.Manifest
 import android.content.Intent
 import android.os.Build
@@ -18,6 +19,8 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.example.heartsync.data.model.MeasureMode
 import com.example.heartsync.data.model.SessionConfig
 import com.example.heartsync.service.MeasureService
+import com.example.heartsync.ui.screens.HomeScreen
+import com.example.heartsync.ui.screens.LoginScreen
 
 class MainActivity : ComponentActivity() {
     private var keepSplash = true
@@ -40,18 +43,39 @@ class MainActivity : ComponentActivity() {
         // 2) 메인 콘텐츠
         setContent {
             MaterialTheme {
-                Surface(Modifier.fillMaxSize()) {
-                    HomeScreen(
-                        onStart60s = {
-                            val cfg = SessionConfig(mode = MeasureMode.SPOT, durationSec = 60)
-                            startMeasureService(cfg)
-                        },
-                        onStop = {
-                            stopService(Intent(this, MeasureService::class.java))
-                        }
-                    )
+                Surface(modifier = Modifier) {
+                    AppContent()
                 }
             }
+        }
+    }
+
+    @Composable
+    private fun AppContent() {
+        // 지금은 “UI 틀만”이므로 메모리 상태로 로그인 여부를 관리
+        var isLoggedIn by remember { mutableStateOf(false) }
+
+        if (isLoggedIn) {
+            HomeScreen(
+                onStart60s = {
+                    val cfg = SessionConfig(mode = MeasureMode.SPOT, durationSec = 60)
+                    startMeasureService(cfg)
+                },
+                onStop = {
+                    stopService(Intent(this, MeasureService::class.java))
+                }
+            )
+        } else {
+            LoginScreen(
+                onLoginClick = { id, pw ->
+                    // FIXME: 나중에 Firebase Auth 연결
+                    // signInWithEmailAndPassword(id, pw) 성공 시 isLoggedIn = true
+                    isLoggedIn = true
+                },
+                onRegisterClick = {
+                    // FIXME: 나중에 회원가입 화면 연결 (NavHost 사용 권장)
+                }
+            )
         }
     }
 
@@ -72,24 +96,5 @@ class MainActivity : ComponentActivity() {
             putExtra(MeasureService.EXTRA_CFG, cfg)
         }
         ContextCompat.startForegroundService(this, intent)
-    }
-}
-
-@Composable
-private fun HomeScreen(onStart60s: () -> Unit, onStop: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text("HeartSync • Spot Measure (60s)", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(16.dp))
-        Button(onClick = onStart60s, modifier = Modifier.fillMaxWidth()) {
-            Text("Start 60s Measurement")
-        }
-        Spacer(Modifier.height(8.dp))
-        OutlinedButton(onClick = onStop, modifier = Modifier.fillMaxWidth()) {
-            Text("Stop")
-        }
     }
 }
