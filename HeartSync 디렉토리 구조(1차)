@@ -4,6 +4,8 @@ app/
  │   ├─ java/com/example/HeartSync/
  │   │   ├─ MainActivity.kt            // 앱 엔트리, 버튼으로 "측정 시작"
  │   │   ├─ ui/
+ │   │   │   ├─ components/
+ │   │   │   │   ├─ TopBar.kt
  │   │   │   ├─ screens/
  │   │   │   │   ├─ HomeScreen.kt
  │   │   │   │   ├─ LoginScreen.kt
@@ -20,11 +22,12 @@ app/
  │   │   │   └─ PPGBleClient.kt        // BLE 스캔/연결/Notify 수신/명령 Write
  │   │   ├─ data/
  │   │   │   ├─ model/
+ │   │   │   │   └─ AppUser.kt
  │   │   │   │   └─ SessionConfig.kt   // SPOT 모드 설정값(duration 등)
  │   │   │   ├─ local/
  │   │   │   │   └─ CsvWriter.kt       // CSV 파일 기록 (MediaStore)
  │   │   │   └─ remote/
- │   │   │       └─ FirestoreUploader.kt // 수신 데이터 Firestore 업로드
+ │   │   │       └─ AuthRepository.kt
  │   │   └─ util/
  │   │       └─ Constants.kt
  │   │       └─ Route.kt
