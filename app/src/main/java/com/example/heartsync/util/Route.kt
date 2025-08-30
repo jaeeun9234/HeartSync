@@ -1,8 +1,8 @@
-package com.example.HeartSync.util
+package com.example.heartsync.util
 
 object Route {
-    const val SPLASH = "splash"
-    const val LOGIN = "login"
-    const val HOME = "home"
-    const val REGISTER = "register"
+    const val Splash = "splash"
+    const val Login = "login"
+    const val Home = "home"
+    const val Register = "register"
 }

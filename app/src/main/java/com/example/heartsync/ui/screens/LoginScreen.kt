@@ -1,100 +1,54 @@
 package com.example.heartsync.ui.screens
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import com.example.heartsync.R
-
+import androidx.navigation.NavHostController
+import com.example.heartsync.ui.components.TopBar
+import com.example.heartsync.util.Route
+import com.example.heartsync.viewmodel.AuthEvent
+import com.example.heartsync.viewmodel.AuthViewModel
+import kotlinx.coroutines.flow.receiveAsFlow
 
 @Composable
-fun LoginScreen(
-    onLoginClick: (String, String) -> Unit,
-    onRegisterClick: () -> Unit
-) {
+fun LoginScreen(nav: NavHostController, vm: AuthViewModel) {
     var id by remember { mutableStateOf("") }
     var pw by remember { mutableStateOf("") }
-    var showPw by remember { mutableStateOf(false) }
+    var err by remember { mutableStateOf<String?>(null) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 24.dp)
-            .imePadding(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Top
-    ) {
-        Spacer(Modifier.height(48.dp))
-
-        // 상단 가운데 로고 이미지
-        Image(
-            painter = painterResource(id = R.drawable.logo_arm),
-            contentDescription = "HeartSync",
-            modifier = Modifier
-                .height(64.dp)
-                .padding(top = 8.dp, bottom = 40.dp)
-        )
-
-        OutlinedTextField(
-            value = id,
-            onValueChange = { id = it },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("아이디(이메일)") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Email,
-                imeAction = ImeAction.Next
-            )
-        )
-        Spacer(Modifier.height(12.dp))
-
-        OutlinedTextField(
-            value = pw,
-            onValueChange = { pw = it },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("비밀번호") },
-            singleLine = true,
-            visualTransformation = if (showPw) VisualTransformation.None else PasswordVisualTransformation(),
-            trailingIcon = {
-                val icon = if (showPw) Icons.Default.VisibilityOff else Icons.Default.Visibility
-                IconButton(onClick = { showPw = !showPw }) {
-                    Icon(icon, contentDescription = if (showPw) "비밀번호 숨기기" else "비밀번호 보기")
+    LaunchedEffect(Unit) {
+        vm.events.receiveAsFlow().collect { e ->
+            when (e) {
+                is AuthEvent.LoggedIn -> nav.navigate(Route.Home) {
+                    popUpTo(Route.Login) { inclusive = true }
                 }
-            },
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Password,
-                imeAction = ImeAction.Done
-            )
-        )
-        Spacer(Modifier.height(24.dp))
-
-        Button(
-            onClick = { onLoginClick(id, pw) },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = id.isNotBlank() && pw.isNotBlank()
-        ) {
-            Text("로그인")
+                is AuthEvent.Error -> err = e.msg
+                else -> {}
+            }
         }
+    }
 
-        Spacer(Modifier.height(12.dp))
-
-        OutlinedButton(
-            onClick = onRegisterClick,
+    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
+        TopBar()
+        OutlinedTextField(value = id, onValueChange = { id = it }, label = { Text("ID") }, modifier = Modifier.fillMaxWidth())
+        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(value = pw, onValueChange = { pw = it }, label = { Text("비밀번호") }, modifier = Modifier.fillMaxWidth())
+        Spacer(Modifier.height(16.dp))
+        Button(
+            onClick = {
+                if (id.isBlank() || pw.isBlank()) err = "ID와 비밀번호를 입력하세요."
+                else vm.loginWithId(id.trim(), pw)
+            },
             modifier = Modifier.fillMaxWidth()
-        ) {
+        ) { Text("로그인") }
+
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(onClick = { nav.navigate(Route.Register) }, modifier = Modifier.fillMaxWidth()) {
             Text("회원가입")
         }
+
+        err?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     }
 }
