@@ -7,6 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import com.example.heartsync.ui.components.TopBar
+import com.example.heartsync.ui.themes.NavyHeader
 import com.example.heartsync.util.Route
 import com.example.heartsync.viewmodel.AuthEvent
 import com.example.heartsync.viewmodel.AuthViewModel
@@ -31,7 +32,6 @@ fun LoginScreen(nav: NavHostController, vm: AuthViewModel) {
     }
 
     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
-        TopBar()
         OutlinedTextField(value = id, onValueChange = { id = it }, label = { Text("ID") }, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(8.dp))
         OutlinedTextField(value = pw, onValueChange = { pw = it }, label = { Text("비밀번호") }, modifier = Modifier.fillMaxWidth())
@@ -41,6 +41,9 @@ fun LoginScreen(nav: NavHostController, vm: AuthViewModel) {
                 if (id.isBlank() || pw.isBlank()) err = "ID와 비밀번호를 입력하세요."
                 else vm.loginWithId(id.trim(), pw)
             },
+            colors = ButtonDefaults.buttonColors(
+                containerColor = NavyHeader
+            ),
             modifier = Modifier.fillMaxWidth()
         ) { Text("로그인") }
 

@@ -2,7 +2,9 @@
 <resources>
 
     <!-- 앱 기본 테마 -->
-    <style name="Theme.HeartSync" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.HeartSync" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+    </style>
 
     <!-- 스플래시 전용 테마 -->
     <style name="Theme.HeartSync.Splash" parent="Theme.SplashScreen">

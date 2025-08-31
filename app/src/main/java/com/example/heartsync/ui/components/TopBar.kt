@@ -2,10 +2,19 @@ package com.example.heartsync.ui.components
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.example.heartsync.R
@@ -16,17 +25,18 @@ fun TopBar() {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(72.dp)
-            .background(NavyHeader), // 네이비 배경
-        contentAlignment = Alignment.Center // 가운데 정렬
+            .background(NavyHeader)
+            .statusBarsPadding()   // 상태바 높이만큼 자동 패딩 → 화면 최상단
+            .height(72.dp),
+        contentAlignment = Alignment.Center
     ) {
-        // 중앙 로고 이미지
         Image(
-            painter = painterResource(id = R.drawable.topbar),
-            contentDescription = "앱 로고",
-            modifier = Modifier
-                .height(36.dp)   // 원하는 크기
-                .wrapContentWidth()
+            painter = painterResource(R.drawable.topbar), // ← drawable에 실제 파일명
+            contentDescription = null,
+            modifier = Modifier.height(28.dp),
+            contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+            // 투명 배경 PNG라면 픽셀만 흰색으로 보임
+            colorFilter = ColorFilter.tint(Color.White, BlendMode.SrcIn)
         )
     }
 }

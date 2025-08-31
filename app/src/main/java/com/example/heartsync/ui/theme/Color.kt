@@ -3,7 +3,7 @@ package com.example.heartsync.ui.themes
 import androidx.compose.ui.graphics.Color
 
 // 핵심 팔레트
-val NavyHeader      = Color(0xFF0F2D3A) // 상단 네이비 바
+val NavyHeader      = Color(0xFF2C3E50) // 상단 네이비 바
 val MintCard        = Color(0xFFBFD4CF) // 카드(로그인/회원가입) 배경
 val MintCardBorder  = Color(0xFF97B8B1)
 val PageBg          = Color(0xFFF7F3F6) // 아주 옅은 핑크/그레이 배경

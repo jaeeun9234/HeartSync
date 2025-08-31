@@ -1,71 +1,84 @@
-package com.example.heartsync   // ← 가능하면 전부 소문자로 통일(권장)
+package com.example.heartsync
 
 import android.Manifest
-import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions
-import androidx.core.content.ContextCompat
-import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.getValue
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.example.heartsync.ui.screens.LoginScreen
 import com.example.heartsync.data.model.MeasureMode
 import com.example.heartsync.data.model.SessionConfig
-//import com.example.heartsync.service.MeasureService
+import com.example.heartsync.ui.components.TopBar
 import com.example.heartsync.ui.screens.HomeScreen
+import com.example.heartsync.ui.screens.LoginScreen
 import com.example.heartsync.ui.screens.SplashSequence
-import com.example.heartsync.util.Route          // ← util의 Route 하나만 import
+import com.example.heartsync.ui.themes.HeartSyncTheme
+import com.example.heartsync.util.Route
 import com.example.heartsync.viewmodel.AuthViewModel
 import com.google.firebase.auth.FirebaseAuth
 
 class MainActivity : ComponentActivity() {
-    private var keepSplash = true
+
     private val permissionLauncher =
         registerForActivityResult(RequestMultiplePermissions()) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        val splash = installSplashScreen()
-        splash.setKeepOnScreenCondition { keepSplash }
         super.onCreate(savedInstanceState)
         requestRuntimePerms()
 
-        window.decorView.postDelayed({ keepSplash = false }, 200)
-
         setContent {
-            val nav = rememberNavController()
-            val authVm: AuthViewModel = viewModel()
-            val isLoggedIn = FirebaseAuth.getInstance().currentUser != null
-            val nextRoute = if (isLoggedIn) Route.Home else Route.Login
+            HeartSyncTheme {
+                val nav = rememberNavController()
+                val authVm: AuthViewModel = viewModel()
 
-            setContent{
-                NavHost(navController = nav, startDestination = Route.Splash) {
-                    composable(Route.Splash) {
-                        SplashSequence(nextRoute = nextRoute) { route ->
-                            nav.navigate(route) {
-                                popUpTo(Route.Splash) { inclusive = true }
-                                launchSingleTop = true
+                // 현재 라우트에 따라 TopBar 노출 여부 결정 (Splash에서는 숨김)
+                val backStackEntry by nav.currentBackStackEntryAsState()
+                val currentRoute = backStackEntry?.destination?.route
+                val showTopBar = (currentRoute ?: Route.Splash) != Route.Splash
+
+                Scaffold(
+                    topBar = { if (showTopBar) TopBar() }
+                ) { inner ->
+                    val isLoggedIn = FirebaseAuth.getInstance().currentUser != null
+                    val nextRoute = if (isLoggedIn) Route.Home else Route.Login
+
+                    NavHost(
+                        navController = nav,
+                        startDestination = Route.Splash,
+                        modifier = androidx.compose.ui.Modifier.padding(inner)
+                    ) {
+                        composable(Route.Splash) {
+                            SplashSequence(nextRoute = nextRoute) { route ->
+                                nav.navigate(route) {
+                                    popUpTo(Route.Splash) { inclusive = true }
+                                    launchSingleTop = true
+                                }
                             }
                         }
-                    }
-                    composable(Route.Login) {
-                        LoginScreen(nav = nav, vm = authVm)
-
-                    }
-                    composable(Route.Home) {
-                        HomeScreen(
-                            onStart60s = {
-                                val cfg = SessionConfig(mode = MeasureMode.SPOT, durationSec = 60)
-                                //startMeasureService(cfg)
-                            },
-                            onStop = {
-                                //stopService(Intent(this@MainActivity, MeasureService::class.java))
-                            }
-                        )
+                        composable(Route.Login) {
+                            LoginScreen(nav = nav, vm = authVm)
+                        }
+                        composable(Route.Home) {
+                            HomeScreen(
+                                onStart60s = {
+                                    val cfg = SessionConfig(mode = MeasureMode.SPOT, durationSec = 60)
+                                    // startMeasureService(cfg)
+                                },
+                                onStop = {
+                                    // stopService(Intent(this@MainActivity, MeasureService::class.java))
+                                }
+                            )
+                        }
+                        // 필요 시 회원가입 라우트도 추가
+                        // composable(Route.Register) { RegisterScreen(nav = nav, vm = authVm) }
                     }
                 }
             }
@@ -83,11 +96,4 @@ class MainActivity : ComponentActivity() {
         }.toTypedArray()
         permissionLauncher.launch(perms)
     }
-
-//    private fun startMeasureService(cfg: SessionConfig) {
-//        val intent = Intent(this, MeasureService::class.java).apply {
-//            putExtra(MeasureService.EXTRA_CFG, cfg)
-//        }
-//        ContextCompat.startForegroundService(this, intent)
-//    }
 }

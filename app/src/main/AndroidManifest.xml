@@ -42,7 +42,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:label="HeartSync"
+            android:label=""
             android:theme="@style/Theme.HeartSync.Splash">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -51,10 +51,10 @@
         </activity>
 
         <!-- HeartSync 측정용 Foreground Service -->
-        <service
-            android:name=".service.MeasureService"
-            android:exported="false"
-            android:foregroundServiceType="connectedDevice|dataSync" />
+<!--        <service-->
+<!--            android:name=".service.MeasureService"-->
+<!--            android:exported="false"-->
+<!--            android:foregroundServiceType="connectedDevice|dataSync" />-->
     </application>
 
 </manifest>
