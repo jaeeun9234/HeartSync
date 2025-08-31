@@ -6,6 +6,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import com.example.heartsync.ui.components.PasswordField
 import com.example.heartsync.ui.components.TopBar
 import com.example.heartsync.ui.themes.NavyHeader
 import com.example.heartsync.util.Route
@@ -32,9 +33,21 @@ fun LoginScreen(nav: NavHostController, vm: AuthViewModel) {
     }
 
     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
-        OutlinedTextField(value = id, onValueChange = { id = it }, label = { Text("ID") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(
+            value = id,
+            onValueChange = { id = it },
+            label = { Text("ID") },
+            modifier = Modifier.fillMaxWidth()
+        )
+
         Spacer(Modifier.height(8.dp))
-        OutlinedTextField(value = pw, onValueChange = { pw = it }, label = { Text("비밀번호") }, modifier = Modifier.fillMaxWidth())
+        PasswordField(
+            value = pw,
+            onValueChange = { pw = it },
+            label = "비밀번호",
+            modifier = Modifier.fillMaxWidth()
+        )
+
         Spacer(Modifier.height(16.dp))
         Button(
             onClick = {

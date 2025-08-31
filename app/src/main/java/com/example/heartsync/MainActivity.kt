@@ -19,6 +19,7 @@ import com.example.heartsync.data.model.SessionConfig
 import com.example.heartsync.ui.components.TopBar
 import com.example.heartsync.ui.screens.HomeScreen
 import com.example.heartsync.ui.screens.LoginScreen
+import com.example.heartsync.ui.screens.RegisterScreen
 import com.example.heartsync.ui.screens.SplashSequence
 import com.example.heartsync.ui.themes.HeartSyncTheme
 import com.example.heartsync.util.Route
@@ -77,8 +78,9 @@ class MainActivity : ComponentActivity() {
                                 }
                             )
                         }
-                        // 필요 시 회원가입 라우트도 추가
-                        // composable(Route.Register) { RegisterScreen(nav = nav, vm = authVm) }
+                        composable(Route.Register)  {
+                            RegisterScreen(nav = nav, vm = authVm)
+                        }
                     }
                 }
             }
