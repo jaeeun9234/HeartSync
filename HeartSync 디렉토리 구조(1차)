@@ -9,17 +9,21 @@ app/
  │   │   │   ├─ local/
  │   │   │   │   └─ CsvWriter.kt       // CSV 파일 기록 (MediaStore)
  │   │   │   ├─ model/
- │   │   │   │   └─ AppUser
+ │   │   │   │   └─ AppUser.kt
+ │   │   │   │   └─ BleDevice.kt
  │   │   │   │   └─ SessionConfig.kt   // SPOT 모드 설정값(duration 등)
  │   │   │   └─ remote/
- │   │   │       └─ AuthRepository
+ │   │   │       └─ AuthRepository.kt
+ │   │   │       └─ UserRepository.kt
  │   │   ├─ service/
  │   │   │   ├─ MeasureService.kt      // 포그라운드 서비스 (BLE 연결+데이터 수신+CSV/Firestore)
  │   │   │   └─ NotificationHelper.kt  // 서비스 알림 헬퍼
  │   │   ├─ ui/
  │   │   │   ├─ components/
+ │   │   │   │   ├─ PasswordField.kt
  │   │   │   │   ├─ TopBar.kt
  │   │   │   ├─ screens/
+ │   │   │   │   ├─ BleConnectScreen.kt
  │   │   │   │   ├─ HomeScreen.kt
  │   │   │   │   ├─ LoginScreen.kt
  │   │   │   │   ├─ RegisterScreen.kt
@@ -30,7 +34,10 @@ app/
  │   │   │   │   ├─ Type.kt
  │   │   └─ util/
  │   │       └─ Constants.kt
- │   │       └─ Route
+ │   │       └─ Permission
+ │   │       └─ Route.kt
  │   │       └─ TimeExt.kt             // timestamp 포맷 헬퍼
  │   │   └─ viewmodel/
  │   │       └─ AuthViewModel.kt
+ │   │       └─ BleViewModel.kt
+
