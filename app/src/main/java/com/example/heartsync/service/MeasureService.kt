@@ -16,6 +16,7 @@
 //    companion object {
 //        const val EXTRA_CFG = "cfg"
 //        private const val NOTI_ID = 10
+//        const val ACTION_STOP = "action_stop"
 //    }
 //
 //    private lateinit var cfg: SessionConfig

@@ -12,6 +12,7 @@ import com.example.heartsync.ui.themes.NavyHeader
 import com.example.heartsync.util.Route
 import com.example.heartsync.viewmodel.AuthEvent
 import com.example.heartsync.viewmodel.AuthViewModel
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
 
 @Composable
@@ -20,14 +21,21 @@ fun LoginScreen(nav: NavHostController, vm: AuthViewModel) {
     var pw by remember { mutableStateOf("") }
     var err by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(Unit) {
-        vm.events.receiveAsFlow().collect { e ->
+    LaunchedEffect(vm) {
+        vm.events.receiveAsFlow().collectLatest { e ->
             when (e) {
-                is AuthEvent.LoggedIn -> nav.navigate(Route.Home) {
-                    popUpTo(Route.Login) { inclusive = true }
+                is AuthEvent.LoggedIn -> {
+                    err = null
+                    nav.navigate(Route.Home) {
+                        // 스플래시가 있다면 이쪽을 권장
+                        // popUpTo(Route.Splash) { inclusive = false }
+                        popUpTo(Route.Login) { inclusive = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
                 }
                 is AuthEvent.Error -> err = e.msg
-                else -> {}
+                else -> Unit
             }
         }
     }
@@ -51,12 +59,14 @@ fun LoginScreen(nav: NavHostController, vm: AuthViewModel) {
         Spacer(Modifier.height(16.dp))
         Button(
             onClick = {
-                if (id.isBlank() || pw.isBlank()) err = "ID와 비밀번호를 입력하세요."
-                else vm.loginWithId(id.trim(), pw)
+                if (id.isBlank() || pw.isBlank()) {
+                    err = "ID와 비밀번호를 입력하세요."
+                } else {
+                    err = null // ✅ 이전 에러 초기화
+                    vm.loginWithId(id.trim(), pw) // ⚠️ 여기 구현 확인 (ID→이메일 매핑 필요)
+                }
             },
-            colors = ButtonDefaults.buttonColors(
-                containerColor = NavyHeader
-            ),
+            colors = ButtonDefaults.buttonColors(containerColor = NavyHeader),
             modifier = Modifier.fillMaxWidth()
         ) { Text("로그인") }
 

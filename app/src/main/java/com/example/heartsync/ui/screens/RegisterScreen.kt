@@ -5,8 +5,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import com.example.heartsync.util.Route
@@ -20,8 +22,8 @@ import kotlinx.coroutines.flow.collectLatest
 fun RegisterScreen(nav: NavHostController, vm: AuthViewModel) {
     var id by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf("") }
-    var birth by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf(TextFieldValue("")) }
+    var birth by remember { mutableStateOf(TextFieldValue("")) }
     var email by remember { mutableStateOf("") }
     var pw by remember { mutableStateOf("") }
     var pwConfirm by remember { mutableStateOf("") }
@@ -100,16 +102,22 @@ fun RegisterScreen(nav: NavHostController, vm: AuthViewModel) {
         OutlinedTextField(name, { name = it }, label={Text("이름")}, modifier=Modifier.fillMaxWidth())
 
         Spacer(Modifier.height(8.dp))
+
         OutlinedTextField(
             value = phone,
             onValueChange = { input ->
-                val digits = input.filter { it.isDigit() }.take(11) // 최대 11자리
-                phone = when {
+                val digits = input.text.filter { it.isDigit() }.take(11)
+                val formatted = when {
                     digits.length >= 11 -> "${digits.substring(0,3)}-${digits.substring(3,7)}-${digits.substring(7,11)}"
                     digits.length >= 7  -> "${digits.substring(0,3)}-${digits.substring(3,7)}-${digits.substring(7)}"
                     digits.length >= 3  -> "${digits.substring(0,3)}-${digits.substring(3)}"
                     else -> digits
                 }
+
+                phone = TextFieldValue(
+                    text = formatted,
+                    selection = TextRange(formatted.length) // ✅ 커서를 항상 맨 뒤로
+                )
             },
             label = { Text("전화번호") },
             placeholder = { Text("010-1234-5678") },
@@ -117,23 +125,35 @@ fun RegisterScreen(nav: NavHostController, vm: AuthViewModel) {
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
         )
 
+
         Spacer(Modifier.height(8.dp))
+
         OutlinedTextField(
             value = birth,
             onValueChange = { input ->
-                val digits = input.filter { it.isDigit() }.take(8) // 최대 8자리
-                birth = when {
+                // 숫자만 추출
+                val digits = input.text.filter { it.isDigit() }.take(8)
+
+                // 포맷팅
+                val formatted = when {
                     digits.length >= 8 -> "${digits.substring(0,4)}-${digits.substring(4,6)}-${digits.substring(6,8)}"
                     digits.length >= 6 -> "${digits.substring(0,4)}-${digits.substring(4,6)}-${digits.substring(6)}"
                     digits.length >= 4 -> "${digits.substring(0,4)}-${digits.substring(4)}"
                     else -> digits
                 }
+
+                // 커서를 항상 끝으로 이동
+                birth = TextFieldValue(
+                    text = formatted,
+                    selection = TextRange(formatted.length)  // ✅ 커서를 맨 뒤로
+                )
             },
             label = { Text("생년월일 (YYYY-MM-DD)") },
             placeholder = { Text("YYYY-MM-DD") },
             modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
         )
+
 
         Spacer(Modifier.height(8.dp))
         OutlinedTextField(email, { email = it }, label={Text("이메일")}, modifier=Modifier.fillMaxWidth())
@@ -163,7 +183,7 @@ fun RegisterScreen(nav: NavHostController, vm: AuthViewModel) {
         Button(
             onClick = {
                 when {
-                    id.isBlank() || name.isBlank() || phone.isBlank() || birth.isBlank() || email.isBlank() || pw.isBlank() || pwConfirm.isBlank() -> {
+                    id.isBlank() || name.isBlank() || phone.text.isBlank() || birth.text.isBlank() || email.isBlank() || pw.isBlank() || pwConfirm.isBlank() -> {
                         dialogMsg = "모든 항목을 입력해 주세요."
                         showDialog = true
                     }
@@ -180,7 +200,7 @@ fun RegisterScreen(nav: NavHostController, vm: AuthViewModel) {
                         showDialog = true
                     }
                     else -> {
-                        vm.register(id.trim(), name.trim(), phone.trim(), birth.trim(), email.trim(), pw)
+                        vm.register(id.trim(), name.trim(), phone.text.trim(), birth.text.trim(), email.trim(), pw)
                     }
                 }
             },

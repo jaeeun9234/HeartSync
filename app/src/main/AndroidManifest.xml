@@ -12,11 +12,11 @@
 
     <!-- Android 12+ BLE 권한 -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation"/>
 
     <!-- 스캔 시 위치 권한 요구되는 기기 대응 (Lint: FINE 쓰면 COARSE도 같이 선언) -->
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" android:maxSdkVersion="30" />
 
     <!-- 포그라운드 서비스 권한(타입별) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
