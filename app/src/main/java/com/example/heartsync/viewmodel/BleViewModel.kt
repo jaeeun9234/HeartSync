@@ -1,51 +1,48 @@
+// app/src/main/java/com/example/heartsync/viewmodel/BleViewModel.kt
 package com.example.heartsync.viewmodel
 
-import android.content.Context
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.viewModelScope
-import com.example.heartsync.data.model.BleDevice
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import com.example.heartsync.ble.PpgBleClient
-import com.example.heartsync.ble.PpgBleClient.ConnectionState
-import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
+import com.example.heartsync.data.model.BleDevice
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
-data class BleUiState(
-    val scanning: Boolean = false,
-    val devices: List<BleDevice> = emptyList(),
-    val connection: ConnectionState = ConnectionState.Disconnected
-) {
-    val isConnected: Boolean get() = connection is ConnectionState.Connected
-    val connectedName: String? get() =
-        (connection as? ConnectionState.Connected)?.device?.name
-            ?: (connection as? ConnectionState.Connected)?.device?.address
-}
+class BleViewModel(app: Application) : AndroidViewModel(app) {
 
-class BleViewModel(
-    private val client: PpgBleClient
-) : ViewModel() {
+    // UI에서 볼 로그(간단 문자열 버퍼)
+    private val _logs = MutableStateFlow<List<String>>(emptyList())
+    val logs: StateFlow<List<String>> = _logs
 
-    private val _state = MutableStateFlow(BleUiState())
-    val state: StateFlow<BleUiState> = _state.asStateFlow()
-
-    init {
-        viewModelScope.launch { client.scanning.collect { s -> _state.update { it.copy(scanning = s) } } }
-        viewModelScope.launch { client.scanResults.collect { list -> _state.update { it.copy(devices = list) } } }
-        viewModelScope.launch { client.connectionState.collect { cs -> _state.update { it.copy(connection = cs) } } }
+    private fun appendLog(line: String) {
+        val cur = _logs.value.toMutableList()
+        if (cur.size > 200) cur.removeAt(0)   // API 24 안전
+        cur.add(line)
+        _logs.value = cur
     }
 
+    // 앱 전체에서 단 하나만 쓰일 BLE 클라이언트
+    private val client = PpgBleClient(
+        ctx = app.applicationContext,
+        onLine = { s -> appendLog("<< $s") },
+        onError = { e -> appendLog("!! $e") },
+        filterByService = false
+    )
+
+    // 화면들이 구독할 상태
+    val scanning = client.scanning
+    val scanResults = client.scanResults
+    val connectionState = client.connectionState
+
+    // 액션들
     fun startScan() = client.startScan()
     fun stopScan() = client.stopScan()
-    fun connect(d: BleDevice) = client.connect(d)
+    fun connect(device: BleDevice) = client.connect(device)
     fun disconnect() = client.disconnect()
+    fun writeCmd(text: String) = client.writeCmd(text)
 
-    companion object {
-        fun provideFactory(appCtx: Context) = object : ViewModelProvider.Factory {
-            @Suppress("UNCHECKED_CAST")
-            override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return BleViewModel(PpgBleClient(appCtx) { /* UI에선 라인 무시 */ }) as T
-            }
-        }
+    override fun onCleared() {
+        super.onCleared()
+        client.disconnect()  // 액티비티 종료 시 정리
     }
-
 }

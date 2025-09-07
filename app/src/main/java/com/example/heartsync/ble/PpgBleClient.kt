@@ -1,3 +1,4 @@
+// app/src/main/java/com/example/heartsync/ble/PpgBleClient.kt
 package com.example.heartsync.ble
 
 import android.Manifest
@@ -14,96 +15,90 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.*
+import java.util.concurrent.LinkedBlockingQueue
 
 /**
- * PpgBleClient
- * - 스캔/연결/Notify/명령 Write 를 모두 포함한 단일 클라이언트
- * - UI: StateFlow(scanning/scanResults/connectionState) 구독
- * - Service: onLine / onConnected / onError 콜백 사용 가능
- *
- * ✨ 필요 권한:
- *  - Android 12+ : BLUETOOTH_SCAN, BLUETOOTH_CONNECT
- *  - Android 11- : ACCESS_FINE_LOCATION (스캔용)
+ * HeartSync BLE 클라이언트 (UI와만 맞춘 미니멀 버전)
  */
 class PpgBleClient(
     private val ctx: Context,
     private val onLine: (String) -> Unit = {},
-    private val onConnected: () -> Unit = {},
-    private val onError: (String) -> Unit = {}
+    private val onError: (String) -> Unit = {},
+    private val filterByService: Boolean = false
 ) {
+    // ===== UUID (교체 필요) =====
+    private val serviceUuid: UUID = UUID.fromString("12345678-0000-1000-8000-00805f9b34fb")
+    private val charCmdUuid: UUID = UUID.fromString("0000AAAC-0000-1000-8000-00805f9b34fb") // (선택) Write
+    private val notifyCharUuids: List<UUID> = listOf(
+        UUID.fromString("0000ABCD-0000-1000-8000-00805f9b34fb"),
+        UUID.fromString("00002A1C-0000-1000-8000-00805f9b34fb"),
+        UUID.fromString("00002A37-0000-1000-8000-00805f9b34fb"),
+        UUID.fromString("00002A38-0000-1000-8000-00805f9b34fb"),
+    )
+    private val cccdUuid: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
-    // ====== ⛓️ UUID (실제 기기로 교체 필요) ======
-    private val SERVICE_UUID = UUID.fromString("0000aaaa-0000-1000-8000-00805f9b34fb")
-    private val CHAR_DATA_UUID = UUID.fromString("0000aaab-0000-1000-8000-00805f9b34fb") // Notify
-    private val CHAR_CMD_UUID  = UUID.fromString("0000aaac-0000-1000-8000-00805f9b34fb") // Write
-    private val CCCD_UUID      = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+    // ===== UI State =====
+    sealed interface ConnectionState {
+        data object Disconnected : ConnectionState
+        data object Connecting : ConnectionState
+        data class Connected(val device: BleDevice) : ConnectionState
+        data class Failed(val reason: String) : ConnectionState
+    }
 
-    // ====== 🔄 UI State ======
     private val _scanning = MutableStateFlow(false)
     val scanning: StateFlow<Boolean> = _scanning.asStateFlow()
 
     private val _scanResults = MutableStateFlow<List<BleDevice>>(emptyList())
     val scanResults: StateFlow<List<BleDevice>> = _scanResults.asStateFlow()
 
-    sealed interface ConnectionState {
-        data object Disconnected : ConnectionState
-        data object Connecting   : ConnectionState
-        data class Connected(val device: BleDevice) : ConnectionState
-        data class Failed(val reason: String) : ConnectionState
-    }
-
-    private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
+    private val _connectionState =
+        MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
-    // ====== 🔧 BLE Handles ======
-    private val btManager: BluetoothManager? get() =
-        ctx.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
-    private val btAdapter: BluetoothAdapter? get() = btManager?.adapter
+    // ===== BLE handles =====
+    private val btManager get() =
+        ctx.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+    private val btAdapter: BluetoothAdapter? get() = btManager.adapter
     private val scanner: BluetoothLeScanner? get() = btAdapter?.bluetoothLeScanner
 
     private var gatt: BluetoothGatt? = null
-    private var dataChar: BluetoothGattCharacteristic? = null
     private var cmdChar: BluetoothGattCharacteristic? = null
-
+    private val descriptorQueue = LinkedBlockingQueue<BluetoothGattDescriptor>()
     private var scanCallback: ScanCallback? = null
 
-    // ====== ✅ Permission Helpers ======
+    // ===== Permission helpers =====
     private fun hasScanPerm(): Boolean =
-        Build.VERSION.SDK_INT < 31 || ContextCompat.checkSelfPermission(
-            ctx, Manifest.permission.BLUETOOTH_SCAN
-        ) == PackageManager.PERMISSION_GRANTED
+        Build.VERSION.SDK_INT < 31 ||
+                ContextCompat.checkSelfPermission(
+                    ctx, Manifest.permission.BLUETOOTH_SCAN
+                ) == PackageManager.PERMISSION_GRANTED
 
     private fun hasConnectPerm(): Boolean =
-        Build.VERSION.SDK_INT < 31 || ContextCompat.checkSelfPermission(
-            ctx, Manifest.permission.BLUETOOTH_CONNECT
-        ) == PackageManager.PERMISSION_GRANTED
+        Build.VERSION.SDK_INT < 31 ||
+                ContextCompat.checkSelfPermission(
+                    ctx, Manifest.permission.BLUETOOTH_CONNECT
+                ) == PackageManager.PERMISSION_GRANTED
 
     private fun hasLegacyLocation(): Boolean =
-        Build.VERSION.SDK_INT < 31 && ContextCompat.checkSelfPermission(
-            ctx, Manifest.permission.ACCESS_FINE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
+        Build.VERSION.SDK_INT < 31 &&
+                ContextCompat.checkSelfPermission(
+                    ctx, Manifest.permission.ACCESS_FINE_LOCATION
+                ) == PackageManager.PERMISSION_GRANTED
 
-    // ====== 🔍 Scan ======
+    // ===== Scan =====
     @SuppressLint("MissingPermission")
     fun startScan() {
-        if (btAdapter?.isEnabled != true) {
-            onError("블루투스가 꺼져 있습니다.")
-            return
-        }
-        if (!(hasScanPerm() || hasLegacyLocation())) {
-            onError("스캔 권한이 없습니다.")
-            return
-        }
+        if (btAdapter?.isEnabled != true) { onError("블루투스가 꺼져 있습니다."); return }
+        if (!(hasScanPerm() || hasLegacyLocation())) { onError("스캔 권한이 없습니다."); return }
         if (_scanning.value) return
 
         _scanResults.value = emptyList()
         _scanning.value = true
 
-        val filters = listOf(
-            ScanFilter.Builder()
-                .setServiceUuid(ParcelUuid(SERVICE_UUID)) // 서비스 UUID로 필터링
-                .build()
-        )
+        val filters = if (filterByService)
+            listOf(ScanFilter.Builder().setServiceUuid(ParcelUuid(serviceUuid)).build())
+        else null
+
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .build()
@@ -128,28 +123,23 @@ class PpgBleClient(
     @SuppressLint("MissingPermission")
     fun stopScan() {
         _scanning.value = false
-        scanCallback?.let { cb -> scanner?.stopScan(cb) }
+        scanCallback?.let { scanner?.stopScan(it) }
         scanCallback = null
     }
 
-    // ====== 🔗 Connect ======
+    // ===== Connect / Disconnect =====
     @SuppressLint("MissingPermission")
     fun connect(device: BleDevice) {
-        if (!hasConnectPerm()) {
-            onError("연결 권한이 없습니다.")
-            return
-        }
+        if (!hasConnectPerm()) { onError("연결 권한이 없습니다."); return }
         stopScan()
         _connectionState.value = ConnectionState.Connecting
 
         val btDev = try {
             BluetoothAdapter.getDefaultAdapter().getRemoteDevice(device.address)
-        } catch (e: IllegalArgumentException) {
-            _connectionState.value = ConnectionState.Failed("잘못된 MAC 주소")
-            return
+        } catch (_: IllegalArgumentException) {
+            _connectionState.value = ConnectionState.Failed("잘못된 MAC 주소"); return
         }
-
-        gatt = btDev.connectGatt(ctx, /* autoConnect */ false, gattCallback)
+        gatt = btDev.connectGatt(ctx, /*autoConnect*/ false, gattCallback)
     }
 
     @SuppressLint("MissingPermission")
@@ -159,48 +149,39 @@ class PpgBleClient(
                 gatt?.disconnect()
                 gatt?.close()
             }
-        } catch (_: SecurityException) {
-        } finally {
+        } catch (_: SecurityException) { /* no-op */ }
+        finally {
             gatt = null
-            dataChar = null
-            cmdChar  = null
+            cmdChar = null
             _connectionState.value = ConnectionState.Disconnected
         }
     }
 
-    // ====== ✉️ Write command ======
+    // ===== Write (선택) =====
     @SuppressLint("MissingPermission")
     fun writeCmd(text: String) {
         val c = cmdChar ?: return
         if (!hasConnectPerm()) return
         val value = text.toByteArray()
-
         if (Build.VERSION.SDK_INT >= 33) {
-            gatt?.writeCharacteristic(
-                c,
-                value,
-                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-            )
+            gatt?.writeCharacteristic(c, value, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
         } else {
-            c.value = value
             @Suppress("DEPRECATION")
-            gatt?.writeCharacteristic(c)
+            run { c.value = value; gatt?.writeCharacteristic(c) }
         }
     }
 
-    // ====== 🧬 Callback ======
+    // ===== GATT Callback =====
     private val gattCallback = object : BluetoothGattCallback() {
 
         @SuppressLint("MissingPermission")
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             if (status != BluetoothGatt.GATT_SUCCESS) {
-                _connectionState.value = ConnectionState.Failed("GATT 오류: $status")
-                return
+                _connectionState.value = ConnectionState.Failed("GATT 오류: $status"); return
             }
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     if (!hasConnectPerm()) return
-                    // 서비스 검색 시작
                     gatt.discoverServices()
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
@@ -212,59 +193,56 @@ class PpgBleClient(
         @SuppressLint("MissingPermission")
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             if (status != BluetoothGatt.GATT_SUCCESS) {
-                _connectionState.value = ConnectionState.Failed("서비스 검색 실패: $status")
-                return
+                _connectionState.value = ConnectionState.Failed("서비스 검색 실패: $status"); return
             }
-            // 서비스/특성 찾기
-            val svc = gatt.getService(SERVICE_UUID) ?: run {
-                _connectionState.value = ConnectionState.Failed("서비스 UUID 미일치")
-                return
-            }
-            dataChar = svc.getCharacteristic(CHAR_DATA_UUID)
-            cmdChar  = svc.getCharacteristic(CHAR_CMD_UUID)
+            val svc = gatt.getService(this@PpgBleClient.serviceUuid)
+            if (svc == null) { _connectionState.value = ConnectionState.Failed("서비스 UUID 미일치"); return }
 
-            if (dataChar == null || cmdChar == null) {
-                _connectionState.value = ConnectionState.Failed("특성 UUID 미일치")
-                return
-            }
+            // (선택) 커맨드 특성 잡기
+            cmdChar = svc.getCharacteristic(this@PpgBleClient.charCmdUuid)
 
-            // Notify 활성화
-            gatt.setCharacteristicNotification(dataChar, true)
-            val cccd = dataChar!!.getDescriptor(CCCD_UUID)
-            cccd?.let {
-                it.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                gatt.writeDescriptor(it) // 일부 기기는 이 단계가 필수
+            // Notify 특성들 전부 CCCD enable (큐로 순차 처리) — forEach 대신 for 루프
+            for (uuid in this@PpgBleClient.notifyCharUuids) {
+                val ch = svc.getCharacteristic(uuid) ?: continue
+                gatt.setCharacteristicNotification(ch, true)
+                val cccd = ch.getDescriptor(this@PpgBleClient.cccdUuid) ?: continue
+                // API 별 descriptor write 처리: 값 세팅은 여기서
+                cccd.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                descriptorQueue.add(cccd)
             }
+            writeNextDescriptor()
 
-            // 연결 완료로 전환
             val dev = BleDevice(gatt.device?.name, gatt.device?.address ?: "Unknown")
             _connectionState.value = ConnectionState.Connected(dev)
-            onConnected.invoke()
         }
 
-        override fun onCharacteristicChanged(
-            gatt: BluetoothGatt,
-            characteristic: BluetoothGattCharacteristic
-        ) {
-            if (characteristic.uuid == CHAR_DATA_UUID) {
-                val bytes = characteristic.value ?: return
-                val line = bytes.decodeToString().trim()
-                if (line.isNotEmpty()) onLine.invoke(line)
-            }
+        override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
+            writeNextDescriptor()
+        }
+
+        override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
+            val bytes = characteristic.value ?: return
+            val line = bytes.decodeToString().trim()
+            if (line.isNotEmpty()) onLine.invoke(line)
         }
     }
 
-    // ====== 🪄 서비스에서 쓰기 좋은 래핑 ======
-    /**
-     * 스캔 → 첫 결과 자동 선택 → 연결 → 서비스/Notify 셋업
-     * 실제 장치가 하나뿐이거나, 특정 이름/주소 기준으로 고르려면 아래 TODO를 채우세요.
-     */
     @SuppressLint("MissingPermission")
-    fun connectAndSubscribe() {
-        // 간단 예시: 바로 스캔 시작해서 첫 결과로 연결
-        startScan()
-        // TODO: 실사용에서는 스캔 콜백에서 원하는 기기를 선택해 connect() 호출하세요.
-        // 여기서는 데모로 2초 후 첫 항목 연결 정도를 구현해도 되고,
-        // MeasureService에서 직접 connect(BleDevice)를 호출하는 흐름으로 바꿔도 됩니다.
+    private fun writeNextDescriptor() {
+        val next = descriptorQueue.poll() ?: return
+        try {
+            if (Build.VERSION.SDK_INT >= 33) {
+                // 33+ 권장 방식
+                gatt?.writeDescriptor(next, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+            } else {
+                @Suppress("DEPRECATION")
+                run {
+                    next.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                    gatt?.writeDescriptor(next)
+                }
+            }
+        } catch (_: SecurityException) {
+            onError("Descriptor write 권한 오류")
+        }
     }
 }

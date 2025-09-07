@@ -8,4 +8,7 @@ object Route {
     const val Splash = "splash"
     const val Login = "login"
     const val Register = "register"
+    const val Docs = "docs"
+    const val Noti = "noti"
+    const val Profile = "profile"
 }

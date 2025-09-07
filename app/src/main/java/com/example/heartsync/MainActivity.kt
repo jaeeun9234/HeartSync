@@ -1,3 +1,4 @@
+// app/src/main/java/com/example/heartsync/MainActivity.kt
 package com.example.heartsync
 
 import android.Manifest
@@ -6,13 +7,12 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions
+import androidx.activity.viewModels
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -20,6 +20,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navigation
+import com.example.heartsync.ui.components.BottomBar
 import com.example.heartsync.ui.components.TopBar
 import com.example.heartsync.ui.screens.BleConnectScreen
 import com.example.heartsync.ui.screens.HomeScreen
@@ -33,6 +34,9 @@ import com.example.heartsync.viewmodel.BleViewModel
 import com.google.firebase.auth.FirebaseAuth
 
 class MainActivity : ComponentActivity() {
+
+    // ★ Activity 범위에서 단 하나의 BLE ViewModel 생성(앱 전체 공유)
+    private val bleVm: BleViewModel by viewModels()
 
     private val permissionLauncher =
         registerForActivityResult(RequestMultiplePermissions()) { }
@@ -51,11 +55,20 @@ class MainActivity : ComponentActivity() {
                 val currentRoute = backStackEntry?.destination?.route
                 val showTopBar = (currentRoute ?: Route.Splash) != Route.Splash
 
-                Scaffold(topBar = { if (showTopBar) TopBar() }) { inner ->
+                // ✅ BottomBar: 기본은 Splash만 제외하고 표시
+                val showBottomBar = (currentRoute ?: Route.Splash) != Route.Splash
+                // 🔄 만약 BLE 연결 화면에서도 숨기고 싶다면 이렇게 바꾸면 됨:
+                // val showBottomBar = currentRoute !in setOf(Route.Splash, Route.BLE_CONNECT)
+
+                Scaffold(
+                    topBar = { if (showTopBar) TopBar(/* onLogoClick = { nav.navigate(Route.Home) } */) },
+                    bottomBar = { if (showBottomBar) BottomBar(nav) }
+                ) { inner ->
                     AppNav(
                         navController = nav,
                         modifier = Modifier.padding(inner),
-                        authVm = authVm
+                        authVm = authVm,
+                        bleVm = bleVm
                     )
                 }
             }
@@ -66,7 +79,8 @@ class MainActivity : ComponentActivity() {
     private fun AppNav(
         navController: NavHostController,
         modifier: Modifier = Modifier,
-        authVm: AuthViewModel
+        authVm: AuthViewModel,
+        bleVm: BleViewModel,                 // ★ 전달받은 전역 BLE VM
     ) {
         val isLoggedIn = FirebaseAuth.getInstance().currentUser != null
         val nextRoute = if (isLoggedIn) Route.MAIN else Route.Login
@@ -91,41 +105,22 @@ class MainActivity : ComponentActivity() {
             composable(Route.Login) { LoginScreen(nav = navController, vm = authVm) }
             composable(Route.Register) { RegisterScreen(nav = navController, vm = authVm) }
 
-            // 3) 메인 그래프 (여기서 BleViewModel "공유")
+            // 3) 메인 그래프 (여기서도 같은 bleVm을 그대로 전달)
             navigation(startDestination = Route.Home, route = Route.MAIN) {
 
-                // Home (사진 1/4)
-                composable(Route.Home) { backStackEntry ->
-                    // ★ MAIN 그래프의 ViewModelStoreOwner를 사용하여 공유 인스턴스 획득
-                    val parentEntry = remember(backStackEntry) {
-                        navController.getBackStackEntry(Route.MAIN)
-                    }
-                    val appCtx = LocalContext.current.applicationContext
-                    val bleVm: BleViewModel = viewModel(
-                        viewModelStoreOwner = parentEntry,
-                        factory = BleViewModel.provideFactory(appCtx)
-                    )
-
+                // Home
+                composable(Route.Home) {
                     HomeScreen(
                         onClickBle = { navController.navigate(Route.BLE_CONNECT) },
                         bleVm = bleVm
                     )
                 }
 
-                // BLE 연결 화면 (사진 2/3)
-                composable(Route.BLE_CONNECT) { backStackEntry ->
-                    val parentEntry = remember(backStackEntry) {
-                        navController.getBackStackEntry(Route.MAIN)
-                    }
-                    val appCtx = LocalContext.current.applicationContext
-                    val bleVm: BleViewModel = viewModel(
-                        viewModelStoreOwner = parentEntry,
-                        factory = BleViewModel.provideFactory(appCtx)
-                    )
-
+                // BLE 연결 화면
+                composable(Route.BLE_CONNECT) {
                     BleConnectScreen(
                         vm = bleVm,
-                        onConnected = { navController.popBackStack() } // 연결 후 홈(사진 4)
+                        onConnected = { navController.popBackStack() } // 연결 후 이전 화면으로
                     )
                 }
             }
