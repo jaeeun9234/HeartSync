@@ -20,7 +20,9 @@ app/
  │   │   │   └─ NotificationHelper.kt  // 서비스 알림 헬퍼
  │   │   ├─ ui/
  │   │   │   ├─ components/
+ │   │   │   │   ├─ BottomBar.kt
  │   │   │   │   ├─ PasswordField.kt
+ │   │   │   │   ├─ StatusCard.kt
  │   │   │   │   ├─ TopBar.kt
  │   │   │   ├─ screens/
  │   │   │   │   ├─ BleConnectScreen.kt
