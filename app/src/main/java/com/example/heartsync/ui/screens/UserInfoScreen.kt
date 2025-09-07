@@ -19,7 +19,8 @@ import com.example.heartsync.viewmodel.ProfileViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UserInfoScreen(
-    vm: ProfileViewModel = viewModel()
+    vm: ProfileViewModel = viewModel(),
+    onLogout: () -> Unit = {}
 ) {
     val snackbar = remember { SnackbarHostState() }
     val profile by vm.profile.collectAsState()
@@ -57,6 +58,11 @@ fun UserInfoScreen(
             TopAppBar(
                 title = { Text("내 정보") },
                 actions = {
+                    // 🔹 로그아웃 버튼 추가
+                    TextButton(onClick = onLogout) {
+                        Text("로그아웃")
+                    }
+                    // 기존 편집 토글 유지
                     IconButton(onClick = { editMode = !editMode }) {
                         Icon(Icons.Default.Edit, contentDescription = "수정")
                     }

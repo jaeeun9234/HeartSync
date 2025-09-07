@@ -75,26 +75,13 @@ class UserRepository(
         val usernamesRef = db.collection("usernames").document(id)
         val usersRef = db.collection("users").document(uid)
 
-        // 1) ID 점유 문서 (로그인 편의를 위해 email도 같이 저장 권장)
-        batch.set(usernamesRef, mapOf(
-            "uid" to uid,
-            "email" to email,
-            "createdAt" to FieldValue.serverTimestamp()
-        ))
-
-        // 2) 사용자 프로필
+        batch.set(usernamesRef, mapOf("uid" to uid, "email" to email))
         batch.set(usersRef, mapOf(
-            "uid" to uid,
-            "id" to id,
-            "name" to name,
-            "phone" to phone,
-            "birth" to birth,
-            "email" to email,
-            "createdAt" to FieldValue.serverTimestamp(),
-            "updatedAt" to FieldValue.serverTimestamp()
+            "uid" to uid, "id" to id, "name" to name, "phone" to phone,
+            "birth" to birth, "email" to email,
+            "createdAt" to com.google.firebase.Timestamp.now(),
+            "updatedAt" to com.google.firebase.Timestamp.now()
         ))
-
-        // 원자적 커밋
         batch.commit().await()
     }
 

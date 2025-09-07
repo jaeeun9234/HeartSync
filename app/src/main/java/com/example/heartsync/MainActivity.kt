@@ -10,12 +10,11 @@ import androidx.activity.result.contract.ActivityResultContracts.RequestMultiple
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavDestination.Companion.hierarchy
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -53,18 +52,28 @@ class MainActivity : ComponentActivity() {
                 val nav = rememberNavController()
                 val authVm: AuthViewModel = viewModel()
 
-                // Splash에서는 TopBar 숨김
+                // 현재 라우트
                 val backStackEntry by nav.currentBackStackEntryAsState()
-                val currentRoute = backStackEntry?.destination?.route
+                val currentDest = backStackEntry?.destination
+                val currentRoute = currentDest?.route
+
+                // TopBar: Splash에서는 숨김
                 val showTopBar = (currentRoute ?: Route.Splash) != Route.Splash
 
-                // ✅ BottomBar: 기본은 Splash만 제외하고 표시
-                val showBottomBar = (currentRoute ?: Route.Splash) != Route.Splash
-                // 🔄 만약 BLE 연결 화면에서도 숨기고 싶다면 이렇게 바꾸면 됨:
-                // val showBottomBar = currentRoute !in setOf(Route.Splash, Route.BLE_CONNECT)
+                // BottomBar: 로그인/회원가입/스플래시에서는 숨김 + 탭 화면에서만 표시
+                val bottomBarRoutes = remember {
+                    setOf(
+                        Route.Home,
+                        Route.Profile
+                        // Route.BLE_CONNECT 는 하단바에 노출하지 않음
+                    )
+                }
+                val showBottomBar = currentDest
+                    ?.hierarchy
+                    ?.any { d -> d.route != null && d.route in bottomBarRoutes } == true
 
                 Scaffold(
-                    topBar = { if (showTopBar) TopBar(/* onLogoClick = { nav.navigate(Route.Home) } */) },
+                    topBar = { if (showTopBar) TopBar() },
                     bottomBar = { if (showBottomBar) BottomBar(nav) }
                 ) { inner ->
                     AppNav(
@@ -78,6 +87,27 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * 비로그인(또는 익명)일 때 보호 라우트 접근을 막는 간단 가드
+     */
+    @Composable
+    private fun RequireAuth(
+        nav: NavHostController,
+        content: @Composable () -> Unit
+    ) {
+        val user = FirebaseAuth.getInstance().currentUser
+        val isLoggedIn = user != null && !user.isAnonymous
+        LaunchedEffect(isLoggedIn) {
+            if (!isLoggedIn) {
+                nav.navigate(Route.Login) {
+                    popUpTo(nav.graph.findStartDestination().id) { inclusive = true }
+                    launchSingleTop = true
+                }
+            }
+        }
+        if (isLoggedIn) content()
+    }
+
     @Composable
     private fun AppNav(
         navController: NavHostController,
@@ -85,7 +115,9 @@ class MainActivity : ComponentActivity() {
         authVm: AuthViewModel,
         bleVm: BleViewModel,                 // ★ 전달받은 전역 BLE VM
     ) {
-        val isLoggedIn = FirebaseAuth.getInstance().currentUser != null
+        // 익명은 로그인으로 취급하지 않음
+        val cur = FirebaseAuth.getInstance().currentUser
+        val isLoggedIn = cur != null && !cur.isAnonymous
         val nextRoute = if (isLoggedIn) Route.MAIN else Route.Login
 
         NavHost(
@@ -108,25 +140,41 @@ class MainActivity : ComponentActivity() {
             composable(Route.Login) { LoginScreen(nav = navController, vm = authVm) }
             composable(Route.Register) { RegisterScreen(nav = navController, vm = authVm) }
 
-            // 3) 메인 그래프 (여기서 BleViewModel "공유")
+            // 3) 메인 그래프 (보호 라우트)
             navigation(startDestination = Route.Home, route = Route.MAIN) {
 
                 composable(Route.Home) {
-                    HomeScreen(
-                        onClickBle = { navController.navigate(Route.BLE_CONNECT) },
-                        bleVm = bleVm                    // ★ 그대로 사용
-                    )
+                    RequireAuth(navController) {
+                        HomeScreen(
+                            onClickBle = { navController.navigate(Route.BLE_CONNECT) },
+                            bleVm = bleVm
+                        )
+                    }
                 }
 
                 composable(Route.BLE_CONNECT) {
-                    BleConnectScreen(
-                        vm = bleVm,                     // ★ 그대로 사용
-                        onConnected = { navController.popBackStack() }
-                    )
+                    RequireAuth(navController) {
+                        BleConnectScreen(
+                            vm = bleVm,
+                            onConnected = { navController.popBackStack() }
+                        )
+                    }
                 }
 
                 composable(Route.Profile) {
-                    UserInfoScreen()                    // 프로필은 별도 VM 내부 생성
+                    RequireAuth(navController) {
+                        UserInfoScreen(
+                            onLogout = {
+                                authVm.logout()
+                                navController.navigate(Route.Login) {
+                                    popUpTo(navController.graph.findStartDestination().id) {
+                                        inclusive = true
+                                    }
+                                    launchSingleTop = true
+                                }
+                            }
+                        )
+                    }
                 }
             }
         }

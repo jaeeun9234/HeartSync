@@ -12,26 +12,39 @@ class AuthRepository(
 
     // ✅ (NEW) ID 중복 확인: usernames/{id} 문서 존재 여부만 확인
     suspend fun checkIdAvailable(id: String): Boolean {
-        ensureAnonymousSignIn() // ★ 중요: 미인증이면 익명 로그인
+        //ensureAnonymousSignIn() // ★ 중요: 미인증이면 익명 로그인
         val doc = db.collection("usernames").document(id).get().await()
         return !doc.exists()
     }
 
     // ✅ ID + 비밀번호 로그인
+//    suspend fun loginWithId(id: String, password: String) {
+//        // 1) Firestore에서 ID → Email 매핑
+//        val snap = db.collection("users")
+//            .whereEqualTo("id", id)
+//            .limit(1)
+//            .get()
+//            .await()
+//
+//        if (snap.isEmpty) throw IllegalStateException("해당 ID가 없습니다.")
+//
+//        val email = snap.documents.first().getString("email")
+//            ?: throw IllegalStateException("이 ID에 연결된 이메일이 없습니다.")
+//
+//        // 2) FirebaseAuth 로그인
+//        auth.signInWithEmailAndPassword(email, password).await()
+//    }
+
     suspend fun loginWithId(id: String, password: String) {
-        // 1) Firestore에서 ID → Email 매핑
-        val snap = db.collection("users")
-            .whereEqualTo("id", id)
-            .limit(1)
-            .get()
-            .await()
+        //ensureAnonymousSignIn() // 익명 토큰 확보(권장)
 
-        if (snap.isEmpty) throw IllegalStateException("해당 ID가 없습니다.")
+        // users 쿼리 금지 → usernames/{id} 단일 GET
+        val doc = db.collection("usernames").document(id).get().await()
+        if (!doc.exists()) throw IllegalStateException("해당 ID가 없습니다.")
 
-        val email = snap.documents.first().getString("email")
+        val email = doc.getString("email")
             ?: throw IllegalStateException("이 ID에 연결된 이메일이 없습니다.")
 
-        // 2) FirebaseAuth 로그인
         auth.signInWithEmailAndPassword(email, password).await()
     }
 
