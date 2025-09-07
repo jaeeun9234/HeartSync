@@ -1,6 +1,8 @@
 package com.example.heartsync.ui.screens
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -29,13 +31,13 @@ fun RegisterScreen(nav: NavHostController, vm: AuthViewModel) {
     var pwConfirm by remember { mutableStateOf("") }
     val pwMismatch = pw.isNotBlank() && pwConfirm.isNotBlank() && pw != pwConfirm
 
-    // 중복확인 결과/팝업 상태
-    var idChecked by remember { mutableStateOf(false) }
-    var idAvailable by remember { mutableStateOf(false) }
+    // ✅ 개선된 ID 확인 상태
+    var checkedId by remember { mutableStateOf<String?>(null) }        // 마지막으로 "확인"을 눌러 검증한 ID(trim)
+    var isIdAvailable by remember { mutableStateOf<Boolean?>(null) }   // true/false/null(미확인)
+
+    // 다이얼로그 & 에러
     var showDialog by remember { mutableStateOf(false) }
     var dialogMsg by remember { mutableStateOf("") }
-
-    // 에러 메시지
     var err by remember { mutableStateOf<String?>(null) }
 
     // 이벤트 수신
@@ -43,22 +45,18 @@ fun RegisterScreen(nav: NavHostController, vm: AuthViewModel) {
         vm.events.receiveAsFlow().collectLatest { e ->
             when (e) {
                 is AuthEvent.LoggedIn -> {
-                    // 1) 스택에 Login 있으면 그걸로 복귀
                     val popped = nav.popBackStack(Route.Login, inclusive = false)
                     if (!popped) {
-                        // 2) 없으면 새로 이동 (중복 방지)
                         nav.navigate(Route.Login) {
                             popUpTo(Route.Splash) { inclusive = false }
                             launchSingleTop = true
                         }
                     }
                 }
-                is AuthEvent.Error -> {
-                    err = e.msg
-                }
+                is AuthEvent.Error -> err = e.msg
                 is AuthEvent.IdCheckResult -> {
-                    idChecked = true
-                    idAvailable = e.available
+                    checkedId = e.id.trim()
+                    isIdAvailable = e.available
                     dialogMsg = if (e.available) "사용 가능한 ID 입니다." else "이미 사용 중인 ID 입니다."
                     showDialog = true
                 }
@@ -67,16 +65,23 @@ fun RegisterScreen(nav: NavHostController, vm: AuthViewModel) {
         }
     }
 
-
-    // ID가 변경되면 체크 상태 초기화(다시 확인하게)
+    // ID가 바뀌면(공백 포함) 재확인 필요 상태로
     LaunchedEffect(id) {
-        idChecked = false
-        idAvailable = false
+        val cur = id.trim()
+        if (cur != checkedId) isIdAvailable = null
     }
 
-    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
-
-        // ID 입력 + 중복확인 버튼
+    // 🔽 스크롤 가능 + 키보드/네비게이션 바 회피
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .imePadding()
+            .navigationBarsPadding()
+            .padding(horizontal = 24.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        // ID 입력 + 중복확인
         Row(Modifier.fillMaxWidth()) {
             OutlinedTextField(
                 value = id,
@@ -87,22 +92,35 @@ fun RegisterScreen(nav: NavHostController, vm: AuthViewModel) {
             Spacer(Modifier.width(8.dp))
             Button(
                 onClick = {
-                    if (id.isBlank()) {
+                    val curId = id.trim()
+                    if (curId.isBlank()) {
                         dialogMsg = "ID를 입력해 주세요."
                         showDialog = true
                     } else {
-                        vm.checkIdAvailability(id.trim())
+                        vm.checkIdAvailability(curId)
                     }
                 },
                 modifier = Modifier.width(110.dp)
             ) { Text("중복 확인") }
         }
 
-        Spacer(Modifier.height(8.dp))
-        OutlinedTextField(name, { name = it }, label={Text("이름")}, modifier=Modifier.fillMaxWidth())
+        // 보조 문구(선택)
+        if (checkedId != null && checkedId == id.trim()) {
+            when (isIdAvailable) {
+                true  -> Text("사용 가능한 ID입니다.", color = MaterialTheme.colorScheme.primary)
+                false -> Text("이미 사용 중인 ID입니다.", color = MaterialTheme.colorScheme.error)
+                null  -> {}
+            }
+        }
 
-        Spacer(Modifier.height(8.dp))
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            label = { Text("이름") },
+            modifier = Modifier.fillMaxWidth()
+        )
 
+        // 전화번호
         OutlinedTextField(
             value = phone,
             onValueChange = { input ->
@@ -113,11 +131,7 @@ fun RegisterScreen(nav: NavHostController, vm: AuthViewModel) {
                     digits.length >= 3  -> "${digits.substring(0,3)}-${digits.substring(3)}"
                     else -> digits
                 }
-
-                phone = TextFieldValue(
-                    text = formatted,
-                    selection = TextRange(formatted.length) // ✅ 커서를 항상 맨 뒤로
-                )
+                phone = TextFieldValue(formatted, TextRange(formatted.length))
             },
             label = { Text("전화번호") },
             placeholder = { Text("010-1234-5678") },
@@ -125,28 +139,18 @@ fun RegisterScreen(nav: NavHostController, vm: AuthViewModel) {
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
         )
 
-
-        Spacer(Modifier.height(8.dp))
-
+        // 생년월일
         OutlinedTextField(
             value = birth,
             onValueChange = { input ->
-                // 숫자만 추출
                 val digits = input.text.filter { it.isDigit() }.take(8)
-
-                // 포맷팅
                 val formatted = when {
                     digits.length >= 8 -> "${digits.substring(0,4)}-${digits.substring(4,6)}-${digits.substring(6,8)}"
                     digits.length >= 6 -> "${digits.substring(0,4)}-${digits.substring(4,6)}-${digits.substring(6)}"
                     digits.length >= 4 -> "${digits.substring(0,4)}-${digits.substring(4)}"
                     else -> digits
                 }
-
-                // 커서를 항상 끝으로 이동
-                birth = TextFieldValue(
-                    text = formatted,
-                    selection = TextRange(formatted.length)  // ✅ 커서를 맨 뒤로
-                )
+                birth = TextFieldValue(formatted, TextRange(formatted.length))
             },
             label = { Text("생년월일 (YYYY-MM-DD)") },
             placeholder = { Text("YYYY-MM-DD") },
@@ -154,44 +158,49 @@ fun RegisterScreen(nav: NavHostController, vm: AuthViewModel) {
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
         )
 
+        OutlinedTextField(
+            value = email,
+            onValueChange = { email = it },
+            label = { Text("이메일") },
+            modifier = Modifier.fillMaxWidth()
+        )
 
-        Spacer(Modifier.height(8.dp))
-        OutlinedTextField(email, { email = it }, label={Text("이메일")}, modifier=Modifier.fillMaxWidth())
-
-        Spacer(Modifier.height(8.dp))
+        // 비밀번호
         PasswordField(
             value = pw,
             onValueChange = { pw = it },
             label = "비밀번호",
             modifier = Modifier.fillMaxWidth()
         )
-        Spacer(Modifier.height(8.dp))
+
+        // 비밀번호 확인
         OutlinedTextField(
             value = pwConfirm,
             onValueChange = { pwConfirm = it },
             label = { Text("비밀번호 확인") },
             modifier = Modifier.fillMaxWidth(),
-            visualTransformation = PasswordVisualTransformation(), // 항상 가려짐
+            visualTransformation = PasswordVisualTransformation(),
             isError = pwMismatch,
-            supportingText = {
-                if (pwMismatch) Text("비밀번호가 일치하지 않습니다.")
-            }
+            supportingText = { if (pwMismatch) Text("비밀번호가 일치하지 않습니다.") }
         )
 
+        Spacer(Modifier.height(6.dp))
 
-        Spacer(Modifier.height(16.dp))
         Button(
             onClick = {
+                val curId = id.trim()
                 when {
-                    id.isBlank() || name.isBlank() || phone.text.isBlank() || birth.text.isBlank() || email.isBlank() || pw.isBlank() || pwConfirm.isBlank() -> {
+                    id.isBlank() || name.isBlank() || phone.text.isBlank() ||
+                            birth.text.isBlank() || email.isBlank() ||
+                            pw.isBlank() || pwConfirm.isBlank() -> {
                         dialogMsg = "모든 항목을 입력해 주세요."
                         showDialog = true
                     }
-                    !idChecked -> {
+                    checkedId == null || checkedId != curId -> {
                         dialogMsg = "ID 중복 확인을 진행해 주세요."
                         showDialog = true
                     }
-                    !idAvailable -> {
+                    isIdAvailable == false -> {
                         dialogMsg = "이미 사용 중인 ID 입니다. 다른 ID를 입력해 주세요."
                         showDialog = true
                     }
@@ -200,24 +209,31 @@ fun RegisterScreen(nav: NavHostController, vm: AuthViewModel) {
                         showDialog = true
                     }
                     else -> {
-                        vm.register(id.trim(), name.trim(), phone.text.trim(), birth.text.trim(), email.trim(), pw)
+                        vm.register(
+                            curId,
+                            name.trim(),
+                            phone.text.trim(),
+                            birth.text.trim(),
+                            email.trim(),
+                            pw
+                        )
                     }
                 }
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
         ) { Text("OK") }
 
-
         err?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+
+        Spacer(Modifier.height(24.dp))
     }
 
-    // 팝업(다이얼로그)
     if (showDialog) {
         AlertDialog(
             onDismissRequest = { showDialog = false },
-            confirmButton = {
-                TextButton(onClick = { showDialog = false }) { Text("확인") }
-            },
+            confirmButton = { TextButton(onClick = { showDialog = false }) { Text("확인") } },
             title = { Text("알림") },
             text = { Text(dialogMsg) }
         )

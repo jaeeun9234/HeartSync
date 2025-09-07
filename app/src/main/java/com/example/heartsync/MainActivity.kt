@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -27,6 +29,7 @@ import com.example.heartsync.ui.screens.HomeScreen
 import com.example.heartsync.ui.screens.LoginScreen
 import com.example.heartsync.ui.screens.RegisterScreen
 import com.example.heartsync.ui.screens.SplashSequence
+import com.example.heartsync.ui.screens.UserInfoScreen
 import com.example.heartsync.ui.themes.HeartSyncTheme
 import com.example.heartsync.util.Route
 import com.example.heartsync.viewmodel.AuthViewModel
@@ -105,23 +108,25 @@ class MainActivity : ComponentActivity() {
             composable(Route.Login) { LoginScreen(nav = navController, vm = authVm) }
             composable(Route.Register) { RegisterScreen(nav = navController, vm = authVm) }
 
-            // 3) 메인 그래프 (여기서도 같은 bleVm을 그대로 전달)
+            // 3) 메인 그래프 (여기서 BleViewModel "공유")
             navigation(startDestination = Route.Home, route = Route.MAIN) {
 
-                // Home
                 composable(Route.Home) {
                     HomeScreen(
                         onClickBle = { navController.navigate(Route.BLE_CONNECT) },
-                        bleVm = bleVm
+                        bleVm = bleVm                    // ★ 그대로 사용
                     )
                 }
 
-                // BLE 연결 화면
                 composable(Route.BLE_CONNECT) {
                     BleConnectScreen(
-                        vm = bleVm,
-                        onConnected = { navController.popBackStack() } // 연결 후 이전 화면으로
+                        vm = bleVm,                     // ★ 그대로 사용
+                        onConnected = { navController.popBackStack() }
                     )
+                }
+
+                composable(Route.Profile) {
+                    UserInfoScreen()                    // 프로필은 별도 VM 내부 생성
                 }
             }
         }

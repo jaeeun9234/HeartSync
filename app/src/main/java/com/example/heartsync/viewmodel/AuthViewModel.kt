@@ -25,13 +25,15 @@ class AuthViewModel(
     val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
     val events = Channel<AuthEvent>(Channel.BUFFERED)
 
-    private val listener = FirebaseAuth.AuthStateListener {
-        _isLoggedIn.value = (it.currentUser != null)
+    private val listener = FirebaseAuth.AuthStateListener { fb ->
+        val u = fb.currentUser
+        val logged = (u != null && !u.isAnonymous)   // ★ 익명 제외
+        _isLoggedIn.value = logged
         viewModelScope.launch {
-            if (it.currentUser != null) events.send(AuthEvent.LoggedIn)
-            else events.send(AuthEvent.LoggedOut)
+            events.send(if (logged) AuthEvent.LoggedIn else AuthEvent.LoggedOut)
         }
     }
+
 
     init {
         FirebaseAuth.getInstance().addAuthStateListener(listener)
@@ -41,6 +43,7 @@ class AuthViewModel(
         FirebaseAuth.getInstance().removeAuthStateListener(listener)
         super.onCleared()
     }
+
 
     // ✅ ID + PW 로그인
     fun loginWithId(id: String, pw: String) = viewModelScope.launch {
@@ -53,10 +56,14 @@ class AuthViewModel(
 
     // ✅ ID 중복 확인
     fun checkIdAvailability(id: String) = viewModelScope.launch {
-        runCatching { userRepo.isIdAvailable(id) }
-            .onSuccess { available -> events.send(AuthEvent.IdCheckResult(id, available)) }
-            .onFailure { events.send(AuthEvent.Error(it.message ?: "ID 확인 실패")) }
+        try {
+            val available = authRepo.checkIdAvailable(id)  // ← 핵심: authRepo로 일원화
+            events.send(AuthEvent.IdCheckResult(id, available))
+        } catch (e: Exception) {
+            events.send(AuthEvent.Error(e.message ?: "ID 확인 실패"))
+        }
     }
+
 
     // ✅ 회원가입 (Auth 계정 생성 + Firestore 프로필 저장)
     fun register(
@@ -77,8 +84,8 @@ class AuthViewModel(
             val uid = authRepo.register(email, pw)
 
             // 2) Firestore에 유저 프로필 저장
-            userRepo.createUserProfile(uid, id, name, phone, birth, email)
-
+            //userRepo.createUserProfile(uid, id, name, phone, birth, email)
+            userRepo.createUserWithUsernameClaim(uid, id, name, phone, birth, email)
             events.send(AuthEvent.LoggedIn)
 
         } catch (e: Exception) {

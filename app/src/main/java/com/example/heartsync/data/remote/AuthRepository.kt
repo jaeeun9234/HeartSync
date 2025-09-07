@@ -10,6 +10,13 @@ class AuthRepository(
 ) {
     val currentUser get() = auth.currentUser
 
+    // ✅ (NEW) ID 중복 확인: usernames/{id} 문서 존재 여부만 확인
+    suspend fun checkIdAvailable(id: String): Boolean {
+        ensureAnonymousSignIn() // ★ 중요: 미인증이면 익명 로그인
+        val doc = db.collection("usernames").document(id).get().await()
+        return !doc.exists()
+    }
+
     // ✅ ID + 비밀번호 로그인
     suspend fun loginWithId(id: String, password: String) {
         // 1) Firestore에서 ID → Email 매핑
@@ -26,6 +33,12 @@ class AuthRepository(
 
         // 2) FirebaseAuth 로그인
         auth.signInWithEmailAndPassword(email, password).await()
+    }
+
+    // 보조 함수 추가
+    suspend fun ensureAnonymousSignIn() {
+        val auth = FirebaseAuth.getInstance()
+        if (auth.currentUser == null) auth.signInAnonymously().await()
     }
 
     // ✅ FirebaseAuth 회원가입 (Auth 계정만 생성)
