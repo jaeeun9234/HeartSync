@@ -26,7 +26,7 @@ fun LoginScreen(nav: NavHostController, vm: AuthViewModel) {
             when (e) {
                 is AuthEvent.LoggedIn -> {
                     err = null
-                    nav.navigate(Route.Home) {
+                    nav.navigate(Route.MAIN) {
                         // 스플래시가 있다면 이쪽을 권장
                         // popUpTo(Route.Splash) { inclusive = false }
                         popUpTo(Route.Login) { inclusive = true }

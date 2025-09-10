@@ -24,8 +24,10 @@ import androidx.navigation.navigation
 import com.example.heartsync.ui.components.BottomBar
 import com.example.heartsync.ui.components.TopBar
 import com.example.heartsync.ui.screens.BleConnectScreen
+import com.example.heartsync.ui.screens.DataVizScreen
 import com.example.heartsync.ui.screens.HomeScreen
 import com.example.heartsync.ui.screens.LoginScreen
+import com.example.heartsync.ui.screens.NotiLogScreen
 import com.example.heartsync.ui.screens.RegisterScreen
 import com.example.heartsync.ui.screens.SplashSequence
 import com.example.heartsync.ui.screens.UserInfoScreen
@@ -63,8 +65,11 @@ class MainActivity : ComponentActivity() {
                 // BottomBar: 로그인/회원가입/스플래시에서는 숨김 + 탭 화면에서만 표시
                 val bottomBarRoutes = remember {
                     setOf(
+                        Route.MAIN,
                         Route.Home,
-                        Route.Profile
+                        Route.Profile,
+                        Route.Docs,
+                        Route.Noti,
                         // Route.BLE_CONNECT 는 하단바에 노출하지 않음
                     )
                 }
@@ -167,14 +172,21 @@ class MainActivity : ComponentActivity() {
                             onLogout = {
                                 authVm.logout()
                                 navController.navigate(Route.Login) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        inclusive = true
-                                    }
+                                    popUpTo(0) { inclusive = true } // ★ 전체 스택 정리
                                     launchSingleTop = true
                                 }
                             }
+
                         )
                     }
+                }
+
+                composable(Route.Docs) {
+                    RequireAuth(navController) { DataVizScreen() }
+                }
+
+                composable(Route.Noti) {
+                    RequireAuth(navController) { NotiLogScreen() }
                 }
             }
         }
