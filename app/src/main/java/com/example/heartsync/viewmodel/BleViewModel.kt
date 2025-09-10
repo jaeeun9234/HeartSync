@@ -3,46 +3,79 @@ package com.example.heartsync.viewmodel
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import com.example.heartsync.ble.PpgBleClient
 import com.example.heartsync.data.model.BleDevice
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 
 class BleViewModel(app: Application) : AndroidViewModel(app) {
 
-    // UI에서 볼 로그(간단 문자열 버퍼)
-    private val _logs = MutableStateFlow<List<String>>(emptyList())
-    val logs: StateFlow<List<String>> = _logs
+    private val client = PpgBleClient(app)
 
-    private fun appendLog(line: String) {
-        val cur = _logs.value.toMutableList()
-        if (cur.size > 200) cur.removeAt(0)   // API 24 안전
-        cur.add(line)
-        _logs.value = cur
+    private val _scanning = MutableStateFlow(false)
+    val scanning: StateFlow<Boolean> = _scanning.asStateFlow()
+
+    private val _scanResults = MutableStateFlow<List<BleDevice>>(emptyList())
+    val scanResults: StateFlow<List<BleDevice>> = _scanResults.asStateFlow()
+
+    private val _connectionState =
+        MutableStateFlow<PpgBleClient.ConnectionState>(PpgBleClient.ConnectionState.Disconnected)
+    val connectionState: StateFlow<PpgBleClient.ConnectionState> = _connectionState.asStateFlow()
+
+    private var scanJob: Job? = null
+    private var connJob: Job? = null
+
+    fun startScan() {
+        if (_scanning.value) return
+        _scanning.value = true
+
+        // 실제 스캔 시작
+        client.startScan()
+
+        // 기존 수집 중지 후 재시작
+        scanJob?.cancel()
+        scanJob = client.scanResults
+            .onEach { list -> _scanResults.value = list }
+            .launchIn(viewModelScope)
     }
 
-    // 앱 전체에서 단 하나만 쓰일 BLE 클라이언트
-    private val client = PpgBleClient(
-        ctx = app.applicationContext,
-        onLine = { s -> appendLog("<< $s") },
-        onError = { e -> appendLog("!! $e") },
-        filterByService = false
-    )
+    fun stopScan() {
+        _scanning.value = false
+        scanJob?.cancel()
+        client.stopScan()
+    }
 
-    // 화면들이 구독할 상태
-    val scanning = client.scanning
-    val scanResults = client.scanResults
-    val connectionState = client.connectionState
+    fun connect(device: BleDevice) {
+        // 스캔 중이면 중지
+        stopScan()
 
-    // 액션들
-    fun startScan() = client.startScan()
-    fun stopScan() = client.stopScan()
-    fun connect(device: BleDevice) = client.connect(device)
-    fun disconnect() = client.disconnect()
-    fun writeCmd(text: String) = client.writeCmd(text)
+        // 연결 요청
+        client.connect(device)
+
+        // 연결 상태 수집 (중복 수집 방지)
+        connJob?.cancel()
+        connJob = client.connectionState
+            .onEach { state -> _connectionState.value = state }
+            .launchIn(viewModelScope)
+    }
+
+    fun disconnect() {
+        client.disconnect()
+        _connectionState.value = PpgBleClient.ConnectionState.Disconnected
+        // 필요시 수집 중지도 함께
+        connJob?.cancel()
+    }
 
     override fun onCleared() {
         super.onCleared()
-        client.disconnect()  // 액티비티 종료 시 정리
+        scanJob?.cancel()
+        connJob?.cancel()
+        client.stopScan()
+        client.disconnect()
     }
 }

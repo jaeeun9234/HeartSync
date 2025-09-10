@@ -127,14 +127,20 @@ fun UserInfoScreen(
                     onValueChange = { currentPw = it },
                     label = { Text("현재 비밀번호") },
                     visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 56.dp)
                 )
                 OutlinedTextField(
                     value = newPw,
                     onValueChange = { newPw = it },
                     label = { Text("새 비밀번호 (6자 이상)") },
                     visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 56.dp)
                 )
                 OutlinedTextField(
                     value = newPw2,
@@ -146,7 +152,10 @@ fun UserInfoScreen(
                     supportingText = {
                         if (newPw2.isNotEmpty() && newPw2 != newPw)
                             Text("비밀번호가 일치하지 않습니다.")
-                    }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 56.dp)
                 )
             }
 

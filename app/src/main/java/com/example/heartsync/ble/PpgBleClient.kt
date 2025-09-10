@@ -26,14 +26,10 @@ class PpgBleClient(
     private val onError: (String) -> Unit = {},
     private val filterByService: Boolean = false
 ) {
-    // ===== UUID (교체 필요) =====
-    private val serviceUuid: UUID = UUID.fromString("12345678-0000-1000-8000-00805f9b34fb")
-    private val charCmdUuid: UUID = UUID.fromString("0000AAAC-0000-1000-8000-00805f9b34fb") // (선택) Write
-    private val notifyCharUuids: List<UUID> = listOf(
-        UUID.fromString("0000ABCD-0000-1000-8000-00805f9b34fb"),
-        UUID.fromString("00002A1C-0000-1000-8000-00805f9b34fb"),
-        UUID.fromString("00002A37-0000-1000-8000-00805f9b34fb"),
-        UUID.fromString("00002A38-0000-1000-8000-00805f9b34fb"),
+    // ===== UUID =====
+    private val serviceUuid: UUID = UUID.fromString("5ba7a52c-c3fe-46eb-8ade-0dacbd466278")
+    private val notifyCharUuids = listOf(
+        UUID.fromString("5dde726d-4cf3-4e2f-ab24-323caa359b78")
     )
     private val cccdUuid: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
@@ -62,7 +58,6 @@ class PpgBleClient(
     private val scanner: BluetoothLeScanner? get() = btAdapter?.bluetoothLeScanner
 
     private var gatt: BluetoothGatt? = null
-    private var cmdChar: BluetoothGattCharacteristic? = null
     private val descriptorQueue = LinkedBlockingQueue<BluetoothGattDescriptor>()
     private var scanCallback: ScanCallback? = null
 
@@ -152,22 +147,7 @@ class PpgBleClient(
         } catch (_: SecurityException) { /* no-op */ }
         finally {
             gatt = null
-            cmdChar = null
             _connectionState.value = ConnectionState.Disconnected
-        }
-    }
-
-    // ===== Write (선택) =====
-    @SuppressLint("MissingPermission")
-    fun writeCmd(text: String) {
-        val c = cmdChar ?: return
-        if (!hasConnectPerm()) return
-        val value = text.toByteArray()
-        if (Build.VERSION.SDK_INT >= 33) {
-            gatt?.writeCharacteristic(c, value, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
-        } else {
-            @Suppress("DEPRECATION")
-            run { c.value = value; gatt?.writeCharacteristic(c) }
         }
     }
 
@@ -182,6 +162,7 @@ class PpgBleClient(
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     if (!hasConnectPerm()) return
+                    gatt.requestMtu(185)
                     gatt.discoverServices()
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
@@ -197,9 +178,6 @@ class PpgBleClient(
             }
             val svc = gatt.getService(this@PpgBleClient.serviceUuid)
             if (svc == null) { _connectionState.value = ConnectionState.Failed("서비스 UUID 미일치"); return }
-
-            // (선택) 커맨드 특성 잡기
-            cmdChar = svc.getCharacteristic(this@PpgBleClient.charCmdUuid)
 
             // Notify 특성들 전부 CCCD enable (큐로 순차 처리) — forEach 대신 for 루프
             for (uuid in this@PpgBleClient.notifyCharUuids) {

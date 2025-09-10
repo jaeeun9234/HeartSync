@@ -51,10 +51,10 @@
         </activity>
 
         <!-- HeartSync 측정용 Foreground Service -->
-<!--        <service-->
-<!--            android:name=".service.MeasureService"-->
-<!--            android:exported="false"-->
-<!--            android:foregroundServiceType="connectedDevice|dataSync" />-->
+        <service
+            android:name=".service.MeasureService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice|dataSync" />
     </application>
 
 </manifest>

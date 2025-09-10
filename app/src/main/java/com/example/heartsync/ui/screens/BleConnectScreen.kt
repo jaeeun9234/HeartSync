@@ -38,15 +38,16 @@ fun BleConnectScreen(
 
     // 권한 런처 준비
     val requiredPerms = remember {
-        buildList {
-            if (Build.VERSION.SDK_INT >= 31) {
-                add(Manifest.permission.BLUETOOTH_SCAN)
-                add(Manifest.permission.BLUETOOTH_CONNECT)
-            } else {
-                add(Manifest.permission.ACCESS_FINE_LOCATION)
-            }
-        }.toTypedArray()
+        val list = mutableListOf<String>()
+        if (Build.VERSION.SDK_INT >= 31) {
+            list += Manifest.permission.BLUETOOTH_SCAN
+            list += Manifest.permission.BLUETOOTH_CONNECT
+        } else {
+            list += Manifest.permission.ACCESS_FINE_LOCATION
+        }
+        list.toTypedArray()
     }
+
     val permLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { /* 버튼에서 이어서 사용 */ }
