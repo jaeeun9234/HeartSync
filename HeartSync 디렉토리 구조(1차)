@@ -12,6 +12,7 @@ app/
  │   │   │   │   └─ AppUser.kt
  │   │   │   │   └─ BleDevice.kt
  │   │   │   │   └─ SessionConfig.kt   // SPOT 모드 설정값(duration 등)
+ │   │   │   │   └─ UserProfile.kt
  │   │   │   └─ remote/
  │   │   │       └─ AuthRepository.kt
  │   │   │       └─ UserRepository.kt
@@ -30,6 +31,7 @@ app/
  │   │   │   │   ├─ LoginScreen.kt
  │   │   │   │   ├─ RegisterScreen.kt
  │   │   │   │   ├─ SplashScreen.kt
+ │   │   │   │   ├─ UserInfoScreen.kt
  │   │   │   ├─ themes/
  │   │   │   │   ├─ Color.kt
  │   │   │   │   ├─ Theme.kt
@@ -42,4 +44,5 @@ app/
  │   │   └─ viewmodel/
  │   │       └─ AuthViewModel.kt
  │   │       └─ BleViewModel.kt
+ │   │       └─ ProfileViewModel.kt
 
