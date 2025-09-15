@@ -38,9 +38,18 @@ fun HomeScreen(
         StatusCard(
             icon = if (isConnected) "success" else "error",
             title = if (isConnected) "연결됨: $deviceName" else "기기 연결이 필요합니다.",
-            buttonText = if (isConnected) "연결 상태 보기" else "기기 연결",
-            onClick = onClickBle
+            buttonText = if (isConnected) "연결 해제" else "기기 연결",
+            onClick = {
+                if (isConnected) {
+                    // 측정 서비스까지 돌리고 있다면 먼저 멈춤 (있을 때만)
+                    // bleVm.stopMeasure()
+                    bleVm.disconnect()
+                } else {
+                    onClickBle()    // BLE 연결 화면으로 이동
+                }
+            }
         )
+
 
         // ★ 여기서부터 실제 그래프
         // 데이터가 없으면 HomeGraphSection이 "데이터가 없습니다"를 표시하고,
