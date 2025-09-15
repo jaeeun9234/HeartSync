@@ -2,10 +2,15 @@
 package com.example.heartsync.viewmodel
 
 import android.app.Application
+import android.content.Intent
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.heartsync.ble.PpgBleClient
 import com.example.heartsync.data.model.BleDevice
+import com.example.heartsync.data.model.GraphState
+import com.example.heartsync.data.remote.PpgRepository
+import com.example.heartsync.service.MeasureService
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,6 +34,24 @@ class BleViewModel(app: Application) : AndroidViewModel(app) {
 
     private var scanJob: Job? = null
     private var connJob: Job? = null
+
+    private val MAX_GRAPH_POINTS = 600
+
+    private val _graphState = MutableStateFlow(GraphState())
+    val graphState: StateFlow<GraphState> = _graphState.asStateFlow()
+
+    init {
+        // PpgRepository의 실시간 스무딩 샘플 수집 → 최근 N포인트 버퍼 유지
+        PpgRepository.smoothedFlow
+            .onEach { (l, r) ->
+                _graphState.update { prev ->
+                    val newL = (prev.smoothedL + l.toFloat()).takeLast(MAX_GRAPH_POINTS)
+                    val newR = (prev.smoothedR + r.toFloat()).takeLast(MAX_GRAPH_POINTS)
+                    prev.copy(smoothedL = newL, smoothedR = newR)
+                }
+            }
+            .launchIn(viewModelScope)
+    }
 
     fun startScan() {
         if (_scanning.value) return
@@ -69,6 +92,11 @@ class BleViewModel(app: Application) : AndroidViewModel(app) {
         _connectionState.value = PpgBleClient.ConnectionState.Disconnected
         // 필요시 수집 중지도 함께
         connJob?.cancel()
+        clearGraph()
+    }
+
+    fun clearGraph() {
+        _graphState.value = GraphState()
     }
 
     override fun onCleared() {
@@ -77,5 +105,26 @@ class BleViewModel(app: Application) : AndroidViewModel(app) {
         connJob?.cancel()
         client.stopScan()
         client.disconnect()
+    }
+
+    /** 연결된 기기로 측정(MeasureService) 시작 */
+    fun startMeasure(device: BleDevice) {
+        val ctx = getApplication<Application>()
+        val it = Intent(ctx, MeasureService::class.java).apply {
+            putExtra(MeasureService.EXTRA_DEVICE_NAME, device.name)
+            putExtra(MeasureService.EXTRA_DEVICE_ADDR, device.address)
+        }
+        // API 26+ 대응
+        if (android.os.Build.VERSION.SDK_INT >= 26) {
+            ctx.startForegroundService(it)
+        } else {
+            ctx.startService(it)
+        }
+    }
+
+    /** 측정 중지 */
+    fun stopMeasure() {
+        val ctx = getApplication<Application>()
+        ctx.stopService(Intent(ctx, MeasureService::class.java))
     }
 }

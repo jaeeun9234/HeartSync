@@ -17,26 +17,28 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.heartsync.ble.PpgBleClient
 import com.example.heartsync.data.model.BleDevice
-import com.example.heartsync.viewmodel.BleViewModel
 import com.example.heartsync.ui.components.StatusCard
+import com.example.heartsync.viewmodel.BleViewModel
 
 @Composable
 fun BleConnectScreen(
-    vm: BleViewModel,                // 전역 VM 주입
-    onConnected: (() -> Unit)? = null // 연결 즉시 홈으로 가고 싶으면 전달, 3번화면 보고 싶으면 null
+    vm: BleViewModel,
+    onConnected: (() -> Unit)? = null
 ) {
     val scanning by vm.scanning.collectAsState()
     val results by vm.scanResults.collectAsState()
     val conn by vm.connectionState.collectAsState()
 
-    // 연결 성공 시 자동 이동을 원하면 콜백 실행
+    // ✅ 연결 성공 시: 서비스 시작 → 콜백
     LaunchedEffect(conn) {
         if (conn is PpgBleClient.ConnectionState.Connected) {
-            onConnected?.invoke()
+            val d = (conn as PpgBleClient.ConnectionState.Connected).device
+            vm.startMeasure(d)             // ★ 측정 서비스 기동
+            onConnected?.invoke()          // ★ 화면 복귀(또는 이동)
         }
     }
 
-    // 권한 런처 준비
+    // 권한 런처
     val requiredPerms = remember {
         val list = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= 31) {
@@ -47,102 +49,124 @@ fun BleConnectScreen(
         }
         list.toTypedArray()
     }
-
     val permLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { /* 버튼에서 이어서 사용 */ }
+    ) { /* no-op */ }
 
-    // 장치 선택 상태 (2번 화면에서 한 항목을 고르고 "연결하기")
     var selected by remember { mutableStateOf<BleDevice?>(null) }
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Text("BLE 장치 연결", style = MaterialTheme.typography.headlineSmall)
+    Scaffold { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text("BLE 장치 연결", style = MaterialTheme.typography.headlineSmall)
 
-        when (conn) {
-            is PpgBleClient.ConnectionState.Connected -> {
-                // 3번 화면
-                StatusCard(
-                    icon = "success",
-                    title = "연결된 기기: ${(conn as PpgBleClient.ConnectionState.Connected).device.name ?: "Unknown"}",
-                    buttonText = "연결 해제",
-                    onClick = { vm.disconnect() }
-                )
-            }
-            is PpgBleClient.ConnectionState.Connecting -> {
-                StatusCard(
-                    icon = "error",
-                    title = "연결 중…",
-                    buttonText = "취소",
-                    onClick = { vm.disconnect() }
-                )
-            }
-            is PpgBleClient.ConnectionState.Disconnected,
-            is PpgBleClient.ConnectionState.Failed -> {
-                // 2번 화면
-                StatusCard(
-                    icon = "error",
-                    title = if (conn is PpgBleClient.ConnectionState.Failed)
-                        "연결 실패: ${(conn as PpgBleClient.ConnectionState.Failed).reason}"
-                    else
-                        "연결된 기기가 없습니다.",
-                    buttonText = if (scanning) "스캔 중지" else "스캔 시작",
-                    onClick = {
-                        if (scanning) vm.stopScan()
-                        else {
-                            // 권한 요청 후 스캔 시작
-                            permLauncher.launch(requiredPerms)
-                            vm.startScan()
-                        }
-                    }
-                )
-
-                // 스캔 결과 목록
-                if (results.isNotEmpty()) {
-                    Text("발견된 장치 (${results.size})", fontWeight = FontWeight.Bold)
-                    DeviceRadioList(
-                        items = results,
-                        selected = selected,
-                        onSelected = { selected = it }
+            when (conn) {
+                is PpgBleClient.ConnectionState.Connected -> {
+                    StatusCard(
+                        icon = "success",
+                        title = "연결된 기기: ${(conn as PpgBleClient.ConnectionState.Connected).device.name ?: "Unknown"}",
+                        buttonText = "연결 해제",
+                        onClick = { vm.disconnect() }
                     )
+                    Spacer(Modifier.weight(1f))
                 }
 
-                // 연결하기 버튼 (선택된 항목이 있을 때만 활성화)
-                Button(
-                    onClick = { selected?.let(vm::connect) },
-                    enabled = selected != null,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                ) { Text("연결하기") }
+                is PpgBleClient.ConnectionState.Connecting -> {
+                    StatusCard(
+                        icon = "error",
+                        title = "연결 중…",
+                        buttonText = "취소",
+                        onClick = { vm.disconnect() }
+                    )
+                    Spacer(Modifier.weight(1f))
+                }
+
+                is PpgBleClient.ConnectionState.Disconnected,
+                is PpgBleClient.ConnectionState.Failed -> {
+                    StatusCard(
+                        icon = "error",
+                        title = if (conn is PpgBleClient.ConnectionState.Failed)
+                            "연결 실패: ${(conn as PpgBleClient.ConnectionState.Failed).reason}"
+                        else
+                            "연결된 기기가 없습니다.",
+                        buttonText = if (scanning) "스캔 중지" else "스캔 시작",
+                        onClick = {
+                            if (scanning) vm.stopScan()
+                            else {
+                                permLauncher.launch(requiredPerms)
+                                vm.startScan()
+                            }
+                        }
+                    )
+
+                    if (results.isNotEmpty()) {
+                        Text("발견된 장치 (${results.size})", fontWeight = FontWeight.Bold)
+
+                        // ✅ 리스트는 가변영역으로 크게, 아래 버튼은 항상 보이게
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f, fill = true)
+                                .heightIn(min = 260.dp) // ★ 보너스: 최소 높이 확보
+                        ) {
+                            DeviceRadioList(
+                                items = results,
+                                selected = selected,
+                                onSelected = { dev -> selected = dev }
+                            )
+                        }
+                    } else {
+                        // 결과 없을 때도 아래 버튼이 보이도록 빈 공간을 차지
+                        Spacer(Modifier.weight(1f))
+                    }
+
+                    Button(
+                        onClick = { selected?.let(vm::connect) },
+                        enabled = selected != null,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .imePadding()
+                    ) {
+                        Text(if (selected != null) "연결하기" else "기기 선택 후 연결")
+                    }
+                }
             }
         }
     }
 }
 
+/** 스캔 결과 리스트(라디오 선택) */
 @Composable
 private fun DeviceRadioList(
     items: List<BleDevice>,
     selected: BleDevice?,
     onSelected: (BleDevice) -> Unit
 ) {
-    Surface(tonalElevation = 2.dp, shape = MaterialTheme.shapes.medium) {
+    // 카드 톤/테두리를 유지하고 싶으면 Surface 유지
+    Surface(tonalElevation = 1.dp, shape = MaterialTheme.shapes.medium) {
         LazyColumn(
             modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 320.dp)
-                .padding(8.dp)
+                .fillMaxSize()                                // ✅ 컨테이너 높이 꽉 채우기
+                .padding(horizontal = 6.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp),
+            contentPadding = PaddingValues(bottom = 8.dp)
         ) {
-            items(items) { dev ->
+            items(
+                items = items,
+                key = { it.address }
+            ) { dev ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .heightIn(min = 48.dp)               // ✅ 각 행 기본 높이
                         .clickable { onSelected(dev) }
-                        .padding(horizontal = 8.dp, vertical = 10.dp),
+                        .padding(horizontal = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     RadioButton(
@@ -151,11 +175,19 @@ private fun DeviceRadioList(
                     )
                     Spacer(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(dev.name ?: "Unknown")
-                        Text(dev.address, style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            text = dev.name ?: "Unknown",
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1
+                        )
+                        Text(
+                            text = dev.address,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1
+                        )
                     }
                 }
-                Divider()
+                Divider(thickness = 0.6.dp)
             }
         }
     }

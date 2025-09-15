@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.ParcelUuid
+import android.util.Log
 import androidx.core.content.ContextCompat
 import com.example.heartsync.data.model.BleDevice
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,7 +19,8 @@ import java.util.*
 import java.util.concurrent.LinkedBlockingQueue
 
 /**
- * HeartSync BLE 클라이언트 (UI와만 맞춘 미니멀 버전)
+ * HeartSync BLE 클라이언트
+ * - GATT 133 회피: 연결 순서 정석화 (discover → MTU → CCCD), 완전 종료, (선택) 캐시 refresh
  */
 class PpgBleClient(
     private val ctx: Context,
@@ -60,6 +62,10 @@ class PpgBleClient(
     private var gatt: BluetoothGatt? = null
     private val descriptorQueue = LinkedBlockingQueue<BluetoothGattDescriptor>()
     private var scanCallback: ScanCallback? = null
+
+    // 재시도용
+    private var targetDevice: BleDevice? = null
+    private var backoffMs = 1500
 
     // ===== Permission helpers =====
     private fun hasScanPerm(): Boolean =
@@ -127,6 +133,7 @@ class PpgBleClient(
     fun connect(device: BleDevice) {
         if (!hasConnectPerm()) { onError("연결 권한이 없습니다."); return }
         stopScan()
+        targetDevice = device
         _connectionState.value = ConnectionState.Connecting
 
         val btDev = try {
@@ -134,89 +141,156 @@ class PpgBleClient(
         } catch (_: IllegalArgumentException) {
             _connectionState.value = ConnectionState.Failed("잘못된 MAC 주소"); return
         }
-        gatt = btDev.connectGatt(ctx, /*autoConnect*/ false, gattCallback)
+
+        closeGatt() // 이전 세션 완전 정리
+        Log.d("BLE", "connect() to ${device.address}")
+
+        gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            btDev.connectGatt(ctx, /*autoConnect*/ false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+        } else {
+            @Suppress("DEPRECATION")
+            btDev.connectGatt(ctx, /*autoConnect*/ false, gattCallback)
+        }
     }
 
     @SuppressLint("MissingPermission")
     fun disconnect() {
-        try {
-            if (hasConnectPerm()) {
-                gatt?.disconnect()
-                gatt?.close()
-            }
-        } catch (_: SecurityException) { /* no-op */ }
-        finally {
+        Log.d("BLE", "disconnect()")
+        closeGatt()
+        _connectionState.value = ConnectionState.Disconnected
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun closeGatt() {
+        if (!hasConnectPerm()) {      // ★ 권한 없으면 아예 종료
             gatt = null
-            _connectionState.value = ConnectionState.Disconnected
+            return
         }
+        try { gatt?.disconnect() } catch (_: Exception) {}
+        try { gatt?.close() } catch (_: Exception) {}
+        gatt = null
+    }
+
+    private fun refreshDeviceCache(g: BluetoothGatt): Boolean {
+        return try {
+            val m = g.javaClass.getMethod("refresh")
+            m.isAccessible = true
+            m.invoke(g) as Boolean
+        } catch (_: Exception) { false }
+    }
+
+    private fun retryConnectWithBackoff() {
+        val dev = targetDevice ?: return
+        val d = backoffMs.coerceAtMost(5000)
+        Log.d("BLE", "retry in ${d}ms")
+        // 간단히 메인 스레드 지연
+        android.os.Handler(ctx.mainLooper).postDelayed({
+            backoffMs = (backoffMs * 2).coerceAtMost(5000)
+            connect(dev)
+        }, d.toLong())
     }
 
     // ===== GATT Callback =====
     private val gattCallback = object : BluetoothGattCallback() {
 
         @SuppressLint("MissingPermission")
-        override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+        override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
+            Log.d("BLE", "onConnChange status=$status state=$newState")
             if (status != BluetoothGatt.GATT_SUCCESS) {
-                _connectionState.value = ConnectionState.Failed("GATT 오류: $status"); return
+                // 133 포함 실패 케이스: 캐시 새로고침 후 완전 종료, 백오프 재시도
+                refreshDeviceCache(g)
+                closeGatt()
+                _connectionState.value = ConnectionState.Failed("GATT 오류: $status")
+                retryConnectWithBackoff()
+                return
             }
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
-                    if (!hasConnectPerm()) return
-                    gatt.requestMtu(185)
-                    gatt.discoverServices()
+                    backoffMs = 1500
+                    // 서비스 검색 먼저(여기서 MTU 요청 금지)
+                    g.discoverServices()
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
+                    closeGatt()
                     _connectionState.value = ConnectionState.Disconnected
                 }
             }
         }
 
         @SuppressLint("MissingPermission")
-        override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+        override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
+            Log.d("BLE", "onServicesDiscovered status=$status")
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 _connectionState.value = ConnectionState.Failed("서비스 검색 실패: $status"); return
             }
-            val svc = gatt.getService(this@PpgBleClient.serviceUuid)
+
+            val svc = g.getService(this@PpgBleClient.serviceUuid)
             if (svc == null) { _connectionState.value = ConnectionState.Failed("서비스 UUID 미일치"); return }
 
-            // Notify 특성들 전부 CCCD enable (큐로 순차 처리) — forEach 대신 for 루프
-            for (uuid in this@PpgBleClient.notifyCharUuids) {
-                val ch = svc.getCharacteristic(uuid) ?: continue
-                gatt.setCharacteristicNotification(ch, true)
-                val cccd = ch.getDescriptor(this@PpgBleClient.cccdUuid) ?: continue
-                // API 별 descriptor write 처리: 값 세팅은 여기서
-                cccd.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                descriptorQueue.add(cccd)
-            }
-            writeNextDescriptor()
-
-            val dev = BleDevice(gatt.device?.name, gatt.device?.address ?: "Unknown")
+            // 연결 성공 상태 업데이트 (이 시점에 디바이스 정보는 확실)
+            val dev = BleDevice(g.device?.name, g.device?.address ?: "Unknown")
             _connectionState.value = ConnectionState.Connected(dev)
+
+            // ★ MTU 먼저 요청 → onMtuChanged에서 CCCD 진행
+            val ok = g.requestMtu(185)
+            if (!ok) {
+                // 일부 단말은 false 반환해도 콜백이 올 수 있음 → 안전하게 바로 알림 등록 시도
+                enableNotifications(g, svc)
+            }
         }
 
-        override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
+        @SuppressLint("MissingPermission")
+        override fun onMtuChanged(g: BluetoothGatt, mtu: Int, status: Int) {
+            Log.d("BLE", "onMtuChanged mtu=$mtu status=$status")
+            val svc = g.getService(this@PpgBleClient.serviceUuid) ?: run {
+                if (hasConnectPerm()) g.disconnect()   // ★ 가드 추가
+                return
+            }
+            enableNotifications(g, svc)
+        }
+
+
+        @SuppressLint("MissingPermission")
+        override fun onDescriptorWrite(g: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
+            Log.d("BLE", "onDescriptorWrite status=$status")
             writeNextDescriptor()
         }
 
-        override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
-            val bytes = characteristic.value ?: return
-            val line = bytes.decodeToString().trim()
+        @SuppressLint("MissingPermission")
+        override fun onCharacteristicChanged(g: BluetoothGatt, ch: BluetoothGattCharacteristic) {
+            val bytes = ch.value ?: return
+            // 수신 텍스트 라인 가정(센서 펌웨어가 CSV 한 줄씩 보냄)
+            val line = runCatching { bytes.decodeToString() }.getOrNull()?.trim() ?: return
             if (line.isNotEmpty()) onLine.invoke(line)
         }
     }
 
     @SuppressLint("MissingPermission")
+    private fun enableNotifications(g: BluetoothGatt, svc: BluetoothGattService) {
+        // 여러 특성에 대해 순차적으로 CCCD 등록 (큐 사용)
+        descriptorQueue.clear()
+        for (uuid in notifyCharUuids) {
+            val ch = svc.getCharacteristic(uuid) ?: continue
+            val ok = try { g.setCharacteristicNotification(ch, true) } catch (_: SecurityException) { false }
+            if (!ok) continue
+            val cccd = ch.getDescriptor(cccdUuid) ?: continue
+            cccd.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+            descriptorQueue.add(cccd)
+        }
+        writeNextDescriptor()
+    }
+
+    @SuppressLint("MissingPermission")
     private fun writeNextDescriptor() {
-        val next = descriptorQueue.poll() ?: return
+        val d = descriptorQueue.poll() ?: return
         try {
             if (Build.VERSION.SDK_INT >= 33) {
-                // 33+ 권장 방식
-                gatt?.writeDescriptor(next, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+                gatt?.writeDescriptor(d, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
             } else {
                 @Suppress("DEPRECATION")
                 run {
-                    next.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                    gatt?.writeDescriptor(next)
+                    d.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                    gatt?.writeDescriptor(d)
                 }
             }
         } catch (_: SecurityException) {
