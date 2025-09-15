@@ -15,6 +15,7 @@ app/
  │   │   │   │   └─ UserProfile.kt
  │   │   │   └─ remote/
  │   │   │       └─ AuthRepository.kt
+ │   │   │       └─ PpgRepository.kt
  │   │   │       └─ UserRepository.kt
  │   │   ├─ service/
  │   │   │   ├─ MeasureService.kt      // 포그라운드 서비스 (BLE 연결+데이터 수신+CSV/Firestore)
@@ -27,8 +28,10 @@ app/
  │   │   │   │   ├─ TopBar.kt
  │   │   │   ├─ screens/
  │   │   │   │   ├─ BleConnectScreen.kt
+ │   │   │   │   ├─ DataVizScreen.kt
  │   │   │   │   ├─ HomeScreen.kt
  │   │   │   │   ├─ LoginScreen.kt
+ │   │   │   │   ├─ NotiLogScreen.kt
  │   │   │   │   ├─ RegisterScreen.kt
  │   │   │   │   ├─ SplashScreen.kt
  │   │   │   │   ├─ UserInfoScreen.kt
