@@ -5,6 +5,7 @@ import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -55,13 +56,15 @@ fun BleConnectScreen(
 
     var selected by remember { mutableStateOf<BleDevice?>(null) }
 
-    Scaffold { innerPadding ->
+    Scaffold(
+        contentWindowInsets = WindowInsets(0)
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text("BLE 장치 연결", style = MaterialTheme.typography.headlineSmall)
 
@@ -142,29 +145,36 @@ fun BleConnectScreen(
 }
 
 /** 스캔 결과 리스트(라디오 선택) */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun DeviceRadioList(
     items: List<BleDevice>,
     selected: BleDevice?,
     onSelected: (BleDevice) -> Unit
 ) {
-    // 카드 톤/테두리를 유지하고 싶으면 Surface 유지
     Surface(tonalElevation = 1.dp, shape = MaterialTheme.shapes.medium) {
         LazyColumn(
             modifier = Modifier
-                .fillMaxSize()                                // ✅ 컨테이너 높이 꽉 채우기
+                .fillMaxSize()
                 .padding(horizontal = 6.dp, vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(0.dp),
             contentPadding = PaddingValues(bottom = 8.dp)
         ) {
-            items(
-                items = items,
-                key = { it.address }
-            ) { dev ->
+            stickyHeader {
+                Surface(color = MaterialTheme.colorScheme.surface) {
+                    Text(
+                        "발견된 장치 (${items.size})",
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                }
+            }
+            items(items, key = { it.address }) { dev ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 48.dp)               // ✅ 각 행 기본 높이
+                        .heightIn(min = 48.dp)
                         .clickable { onSelected(dev) }
                         .padding(horizontal = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -175,16 +185,8 @@ private fun DeviceRadioList(
                     )
                     Spacer(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(
-                            text = dev.name ?: "Unknown",
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 1
-                        )
-                        Text(
-                            text = dev.address,
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1
-                        )
+                        Text(dev.name ?: "Unknown", style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                        Text(dev.address, style = MaterialTheme.typography.bodySmall, maxLines = 1)
                     }
                 }
                 Divider(thickness = 0.6.dp)
