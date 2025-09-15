@@ -6,11 +6,11 @@ app/
  │   │   ├─ ble/
  │   │   │   └─ PPGBleClient.kt        // BLE 스캔/연결/Notify 수신/명령 Write
  │   │   ├─ data/
- │   │   │   ├─ local/
- │   │   │   │   └─ CsvWriter.kt       // CSV 파일 기록 (MediaStore)
  │   │   │   ├─ model/
  │   │   │   │   └─ AppUser.kt
  │   │   │   │   └─ BleDevice.kt
+ │   │   │   │   └─ GraphState.kt
+ │   │   │   │   └─ PpgEvent.kt
  │   │   │   │   └─ SessionConfig.kt   // SPOT 모드 설정값(duration 등)
  │   │   │   │   └─ UserProfile.kt
  │   │   │   └─ remote/
@@ -19,10 +19,12 @@ app/
  │   │   │       └─ UserRepository.kt
  │   │   ├─ service/
  │   │   │   ├─ MeasureService.kt      // 포그라운드 서비스 (BLE 연결+데이터 수신+CSV/Firestore)
+ │   │   │   ├─ MeasureStatusBus.kt
  │   │   │   └─ NotificationHelper.kt  // 서비스 알림 헬퍼
  │   │   ├─ ui/
  │   │   │   ├─ components/
  │   │   │   │   ├─ BottomBar.kt
+ │   │   │   │   ├─ HomeGraph.kt
  │   │   │   │   ├─ PasswordField.kt
  │   │   │   │   ├─ StatusCard.kt
  │   │   │   │   ├─ TopBar.kt
@@ -47,5 +49,6 @@ app/
  │   │   └─ viewmodel/
  │   │       └─ AuthViewModel.kt
  │   │       └─ BleViewModel.kt
+ │   │       └─ PpgViewModel.kt
  │   │       └─ ProfileViewModel.kt
 
