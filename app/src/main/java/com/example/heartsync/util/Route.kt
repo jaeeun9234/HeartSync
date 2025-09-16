@@ -11,4 +11,5 @@ object Route {
     const val Docs = "docs"
     const val Noti = "noti"
     const val Profile = "profile"
+    const val Measure = "measure"
 }

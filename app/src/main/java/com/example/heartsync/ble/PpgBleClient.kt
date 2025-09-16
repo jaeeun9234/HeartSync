@@ -63,6 +63,22 @@ class PpgBleClient(
     private val descriptorQueue = LinkedBlockingQueue<BluetoothGattDescriptor>()
     private var scanCallback: ScanCallback? = null
 
+    // ★ 추가: Notify 조각들을 \n 기준으로 한 줄로 합치는 버퍼
+    private val lineBuf = StringBuilder()
+
+    // ★ 추가: 바이트 스트림 → 한 줄씩 콜백으로 전달
+    private fun feedBytesAndEmitLines(bytes: ByteArray) {
+        val s = try { bytes.toString(Charsets.UTF_8) } catch (_: Exception) { return }
+        lineBuf.append(s)
+        while (true) {
+            val idx = lineBuf.indexOf("\n")
+            if (idx < 0) break
+            val line = lineBuf.substring(0, idx).trimEnd('\r')
+            lineBuf.delete(0, idx + 1)
+            if (line.isNotBlank()) onLine(line)
+        }
+    }
+
     // 재시도용
     private var targetDevice: BleDevice? = null
     private var backoffMs = 1500
@@ -162,7 +178,7 @@ class PpgBleClient(
 
     @SuppressLint("MissingPermission")
     private fun closeGatt() {
-        if (!hasConnectPerm()) {      // ★ 권한 없으면 아예 종료
+        if (!hasConnectPerm()) {
             gatt = null
             return
         }
@@ -183,7 +199,6 @@ class PpgBleClient(
         val dev = targetDevice ?: return
         val d = backoffMs.coerceAtMost(5000)
         Log.d("BLE", "retry in ${d}ms")
-        // 간단히 메인 스레드 지연
         android.os.Handler(ctx.mainLooper).postDelayed({
             backoffMs = (backoffMs * 2).coerceAtMost(5000)
             connect(dev)
@@ -197,7 +212,6 @@ class PpgBleClient(
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
             Log.d("BLE", "onConnChange status=$status state=$newState")
             if (status != BluetoothGatt.GATT_SUCCESS) {
-                // 133 포함 실패 케이스: 캐시 새로고침 후 완전 종료, 백오프 재시도
                 refreshDeviceCache(g)
                 closeGatt()
                 _connectionState.value = ConnectionState.Failed("GATT 오류: $status")
@@ -227,11 +241,11 @@ class PpgBleClient(
             val svc = g.getService(this@PpgBleClient.serviceUuid)
             if (svc == null) { _connectionState.value = ConnectionState.Failed("서비스 UUID 미일치"); return }
 
-            // 연결 성공 상태 업데이트 (이 시점에 디바이스 정보는 확실)
+            // 연결 성공 상태 업데이트
             val dev = BleDevice(g.device?.name, g.device?.address ?: "Unknown")
             _connectionState.value = ConnectionState.Connected(dev)
 
-            // ★ MTU 먼저 요청 → onMtuChanged에서 CCCD 진행
+            // MTU 먼저 요청 → onMtuChanged에서 CCCD 진행
             val ok = g.requestMtu(185)
             if (!ok) {
                 // 일부 단말은 false 반환해도 콜백이 올 수 있음 → 안전하게 바로 알림 등록 시도
@@ -243,12 +257,11 @@ class PpgBleClient(
         override fun onMtuChanged(g: BluetoothGatt, mtu: Int, status: Int) {
             Log.d("BLE", "onMtuChanged mtu=$mtu status=$status")
             val svc = g.getService(this@PpgBleClient.serviceUuid) ?: run {
-                if (hasConnectPerm()) g.disconnect()   // ★ 가드 추가
+                if (hasConnectPerm()) g.disconnect()
                 return
             }
             enableNotifications(g, svc)
         }
-
 
         @SuppressLint("MissingPermission")
         override fun onDescriptorWrite(g: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
@@ -259,9 +272,8 @@ class PpgBleClient(
         @SuppressLint("MissingPermission")
         override fun onCharacteristicChanged(g: BluetoothGatt, ch: BluetoothGattCharacteristic) {
             val bytes = ch.value ?: return
-            // 수신 텍스트 라인 가정(센서 펌웨어가 CSV 한 줄씩 보냄)
-            val line = runCatching { bytes.decodeToString() }.getOrNull()?.trim() ?: return
-            if (line.isNotEmpty()) onLine.invoke(line)
+            // ★ 수정: 조각을 바로 문자열로 trim하지 말고, 라인 프레이머로 누적 후 \n 단위로 전달
+            feedBytesAndEmitLines(bytes)
         }
     }
 

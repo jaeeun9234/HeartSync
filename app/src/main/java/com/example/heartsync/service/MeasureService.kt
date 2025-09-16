@@ -4,10 +4,10 @@ package com.example.heartsync.service
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.heartsync.data.model.PpgEvent
 import com.example.heartsync.data.remote.PpgRepository
-import com.example.heartsync.service.MeasureStatusBus
 import com.example.heartsync.ble.PpgBleClient
 import com.example.heartsync.data.model.BleDevice
 import com.google.firebase.auth.FirebaseAuth
@@ -16,7 +16,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.collect
+// ★ 불필요: kotlinx.coroutines.flow.collect import 제거
 import kotlinx.coroutines.launch
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
@@ -36,7 +36,8 @@ class MeasureService : Service() {
     private lateinit var client: PpgBleClient
     private lateinit var repo: PpgRepository
 
-    private var userId: String = "anonymous"
+    // 로그인 필수 (anonymous 금지)
+    private var userId: String = ""
     private var sessionId: String = ""
 
     override fun onCreate() {
@@ -55,9 +56,15 @@ class MeasureService : Service() {
         startForeground(NOTI_ID, noti)
 
         // Firestore Repo / Auth 초기화
-        val firestore = FirebaseFirestore.getInstance()
-        repo = PpgRepository(firestore)
-        userId = FirebaseAuth.getInstance().currentUser?.uid ?: "anonymous"
+        repo = PpgRepository(FirebaseFirestore.getInstance())
+
+        val user = FirebaseAuth.getInstance().currentUser
+        if (user == null) {
+            Log.e("MeasureService", "User not logged in, stopping service")
+            stopSelf()
+            return
+        }
+        userId = user.uid
 
         // 세션 ID 생성 (UTC ISO + 8자리 UUID)
         sessionId = newSessionId()
@@ -77,41 +84,24 @@ class MeasureService : Service() {
         client = PpgBleClient(
             ctx = this,
             onLine = { line ->
-                // BLE 1줄 수신 → CSV 파싱 → Firestore 업로드
-                scope.launch(Dispatchers.IO) {
-                    parseCsvLineToEvent(line)?.let { ev ->
-                        val l = ev.smoothed_left?.lastOrNull()
-                        val r = ev.smoothed_right?.lastOrNull()
-                        if (l != null && r != null) {
-                            // PpgRepository의 companion object 스트림 허브로 직접 emit
-                            com.example.heartsync.data.remote.PpgRepository.emitSmoothed(l, r)
-                        }
-
-                        runCatching {
-                            repo.uploadRecord(userId, sessionId, ev)
-                        }.onFailure {
-                            // TODO: 로깅/재시도 큐 적재 등
-                        }
-                    }
-                }
+                scope.launch(Dispatchers.IO) { handleLine(line) }
             },
-            onError = {
-                // TODO: 알림/로그 처리
+            onError = { e ->
+                Log.e("MeasureService", "BLE error: $e")
             },
             filterByService = true
         )
 
         // 연결 시도
-        val device = BleDevice(devName, devAddr)
-        client.connect(device)
+        client.connect(BleDevice(devName, devAddr))
 
         // 연결 상태에 따라 알림 텍스트 업데이트
         scope.launch {
-            client.connectionState.collect { st: PpgBleClient.ConnectionState ->
-                // ✅ 추가: 연결 여부 UI로 올림
+            client.connectionState.collect { st ->
                 val connected = st is PpgBleClient.ConnectionState.Connected
                 MeasureStatusBus.setConnected(connected)
 
+                // ★ 삭제: requestMtu/enableNotify/writeCommand 호출 (PpgBleClient 내부에서 수행)
                 val text = when (st) {
                     is PpgBleClient.ConnectionState.Connected  -> "연결됨: ${st.device.address}"
                     is PpgBleClient.ConnectionState.Connecting -> "연결 중…"
@@ -135,7 +125,6 @@ class MeasureService : Service() {
         super.onDestroy()
         scope.cancel()
         runCatching { client.disconnect() }
-
         MeasureStatusBus.setMeasuring(false)
     }
 
@@ -154,26 +143,32 @@ class MeasureService : Service() {
     private fun utcIsoNow(): String =
         OffsetDateTime.now(ZoneOffset.UTC).toString()
 
-    /**
-     * CSV 파서
-     * ESP32가 아래 순서로 보낸다고 가정:
-     * event,host_time_iso,ts_ms,alert_type,reasons,AmpRatio,PAD_ms,dSUT_ms,ampL,ampR,
-     * SUTL_ms,SUTR_ms,BPM_L,BPM_R,PQIL,PQIR,side,smoothed_left,smoothed_right
-     *
-     * - reasons: "AmpRatio low; PAD high" (세미콜론 구분 권장)
-     * - smoothed_*: "0.12,0.13,0.15" 또는 세미콜론/파이프 허용, 대괄호 유무 허용
-     * - 헤더 라인("event,...") / 빈 줄 / 주석("#")은 스킵
-     */
+    // CSV 한 줄 → Firestore 업로드
+    private suspend fun handleLine(line: String) {
+        val ev = parseCsvLineToEvent(line) ?: return
+
+        // UI용 스트림 (선택)
+        ev.smoothed_left?.lastOrNull()?.let { l ->
+            ev.smoothed_right?.lastOrNull()?.let { r ->
+                PpgRepository.emitSmoothed(l, r)
+            }
+        }
+
+        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
+        try {
+            repo.uploadRecord(uid, sessionId, ev)
+        } catch (t: Throwable) {
+            Log.e("MeasureService", "uploadRecord failed", t)
+        }
+    }
+
     private fun parseCsvLineToEvent(line: String): PpgEvent? {
         val raw = line.trim()
         if (raw.isEmpty()) return null
         if (raw.startsWith("#")) return null
         if (raw.lowercase().startsWith("event,")) return null
 
-        // 단순 콤마 split (필요 시 따옴표-aware CSV 파서로 교체 가능)
         val parts = raw.split(",").map { it.trim() }.toMutableList()
-
-        // 부족한 필드는 빈 문자열로 패딩 (총 19필드 가정)
         while (parts.size < 19) parts.add("")
 
         val event       = parts[0].ifBlank { "STAT" }.uppercase()
@@ -182,31 +177,19 @@ class MeasureService : Service() {
         val alertType   = parts[3].ifBlank { null }
         val reasons     = parseReasons(parts[4])
 
-        fun D(s: String) = s
-            .removePrefix("[")
-            .removeSuffix("]")
-            .takeIf { it.isNotEmpty() }
-            ?.toDoubleOrNull()
-
+        fun D(s: String) = s.removePrefix("[").removeSuffix("]").takeIf { it.isNotEmpty() }?.toDoubleOrNull()
         fun I(s: String) = s.takeIf { it.isNotEmpty() }?.toIntOrNull()
-
         fun listD(s: String): List<Double>? {
             if (s.isBlank()) return null
             val t = s.removePrefix("[").removeSuffix("]")
-            val toks = t.split(',', ';', '|')
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
+            val toks = t.split(',', ';', '|').map { it.trim() }.filter { it.isNotEmpty() }
             if (toks.isEmpty()) return null
             val vals = toks.mapNotNull { it.toDoubleOrNull() }
             return if (vals.isEmpty()) null else vals
         }
-
         fun sideNorm(s: String): String? {
             val v = s.trim().lowercase()
-            return when (v) {
-                "left", "right", "balance" -> v
-                else -> null
-            }
+            return when (v) { "left", "right", "balance" -> v; else -> null }
         }
 
         return PpgEvent(
@@ -234,9 +217,7 @@ class MeasureService : Service() {
 
     private fun parseReasons(s: String?): List<String>? {
         if (s.isNullOrBlank()) return null
-        val list = s.split(";")
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
+        val list = s.split(";").map { it.trim() }.filter { it.isNotEmpty() }
         return if (list.isEmpty()) null else list
     }
 }

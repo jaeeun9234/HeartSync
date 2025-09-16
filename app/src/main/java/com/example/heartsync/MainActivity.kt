@@ -27,6 +27,7 @@ import com.example.heartsync.ui.screens.BleConnectScreen
 import com.example.heartsync.ui.screens.DataVizScreen
 import com.example.heartsync.ui.screens.HomeScreen
 import com.example.heartsync.ui.screens.LoginScreen
+import com.example.heartsync.ui.screens.MeasureScreen
 import com.example.heartsync.ui.screens.NotiLogScreen
 import com.example.heartsync.ui.screens.RegisterScreen
 import com.example.heartsync.ui.screens.SplashSequence
@@ -152,7 +153,10 @@ class MainActivity : ComponentActivity() {
                     RequireAuth(navController) {
                         HomeScreen(
                             onClickBle = { navController.navigate(Route.BLE_CONNECT) },
-                            bleVm = bleVm
+                            bleVm = bleVm,
+                            onStartMeasure = {
+                                navController.navigate(Route.Measure)
+                            }
                         )
                     }
                 }
@@ -164,6 +168,23 @@ class MainActivity : ComponentActivity() {
                             onConnected = { navController.popBackStack() }
                         )
                     }
+                }
+
+                // MainActivity.kt (NavHost 정의 부분 중 Measure route)
+                composable(Route.Measure) {
+                    MeasureScreen(
+                        onFinish = {
+                            // 1) 먼저 Home까지 pop (Home이 스택에 있으면 true)
+                            val ok = navController.popBackStack(Route.Home, false)
+
+                            // 2) Home이 스택에 없으면 새로 네비게이트
+                            if (!ok) {
+                                navController.navigate(Route.Home) {
+                                    launchSingleTop = true   // Home가 위에 또 쌓이지 않도록
+                                }
+                            }
+                        }
+                    )
                 }
 
                 composable(Route.Profile) {

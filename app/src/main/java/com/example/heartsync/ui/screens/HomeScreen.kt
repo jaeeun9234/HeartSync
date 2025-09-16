@@ -17,7 +17,8 @@ import java.util.*
 @Composable
 fun HomeScreen(
     onClickBle: () -> Unit,
-    bleVm: BleViewModel   // MainActivity에서 주입 (전역 공유)
+    bleVm: BleViewModel,   // MainActivity에서 주입 (전역 공유)
+    onStartMeasure: () -> Unit
 ) {
     val conn by bleVm.connectionState.collectAsState()
     val graph by bleVm.graphState.collectAsState()   // ★ 추가: 그래프 상태 수집
@@ -57,13 +58,13 @@ fun HomeScreen(
         HomeGraphSection(state = graph)
 
         Button(
-            onClick = { /* 측정 시작 로직(필요 시) */ },
+            onClick = onStartMeasure,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp),
             enabled = isConnected
         ) {
-            Text("측정 시작")
+            Text("측정 시작(반응성 충혈 test)")
         }
     }
 }

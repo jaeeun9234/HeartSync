@@ -1,6 +1,7 @@
 // app/src/main/java/com/example/HeartSync/viewmodel/PpgViewModel.kt
 package com.example.heartsync.viewmodel
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.heartsync.data.model.PpgEvent
@@ -12,13 +13,16 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
+import java.util.Collections.list
 import java.util.UUID
 
 class PpgViewModel(
     private val repo: PpgRepository
 ) : ViewModel() {
 
-    private val _userId = FirebaseAuth.getInstance().currentUser?.uid ?: "anonymous"
+    private val auth = FirebaseAuth.getInstance()
+    private val _userId : String?
+        get()  = auth.currentUser?.uid
 
     private val _sessionId = MutableStateFlow(newSessionId())
     val sessionId: StateFlow<String> = _sessionId
@@ -34,12 +38,31 @@ class PpgViewModel(
 
     fun observeCurrentSession() {
         viewModelScope.launch {
-            repo.observeRecent(_userId, _sessionId.value, limit = 200)
-                .collectLatest { _events.value = it }
+            val uid = _userId ?: run{
+                _events.value = emptyList()
+                return@launch
+            }
+
+            repo.observeRecent(uid, _sessionId.value, limit = 200L)
+                .collectLatest{ list->
+                    _events.value = list
+                }
         }
     }
 
-    fun currentUserId(): String = _userId
+    fun currentUserId(): String =
+        _userId ?: throw IllegalStateException("User must be logged in")
+
+    fun saveEvent(ev: PpgEvent) {
+        val uid = _userId ?: return  // 로그인 안 됐으면 아무 것도 안 함
+        viewModelScope.launch {
+            runCatching {
+                repo.uploadRecord(uid, _sessionId.value, ev)
+            }.onFailure { e ->
+                Log.e("PpgViewModel", "upload failed", e)
+            }
+        }
+    }
 
     private fun newSessionId(): String {
         val iso = OffsetDateTime.now(ZoneOffset.UTC).toString().replace(":", "-")
